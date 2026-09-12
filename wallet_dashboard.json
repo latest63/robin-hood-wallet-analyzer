@@ -1,0 +1,56 @@
+{
+  "token_contract": "0x385f4f8ae47651ce5f58f5265395a669f8281e18",
+  "deploy_block": 53946846,
+  "known_pools": [
+    {
+      "address": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+      "label": "PoolManager",
+      "tokens": 326907742.71,
+      "txs": 24369
+    },
+    {
+      "address": "0x6f02324d20cc679d0e585290caa6b16bacbc0f77",
+      "label": "DEX Router",
+      "tokens": 4181738.95,
+      "txs": 10304
+    },
+    {
+      "address": "0x4e3468951d49f2eea976ed0d6e75ffcb44a9a544",
+      "label": "DEX Router",
+      "tokens": 3637147.53,
+      "txs": 3718
+    }
+  ],
+  "early_buyers": {
+    "0x24d655a4ed48bfd4291de041a1f81a11ca456aa6": {
+      "buy_tx": "0x2a6b83036ec54fa0bba2c4aafd338b5da6068b38a7deeda95ddb33fadeb41ee8",
+      "block": 53946847,
+      "amount": 37224.76,
+      "eth_spent": 0.044555
+    },
+    "0xcc941b23420b1a402e8972b5b3fc329de9ac19df": {
+      "buy_tx": "0x6390173c7b00f5b4bce11e5f2a857e718609fd9c02b7c8b50636889f12c90c43",
+      "block": 53946847,
+      "amount": 42026.7,
+      "eth_spent": 0.052712
+    },
+    "0x92d435c96e63c43e12d6d0ab28f6b0b04072f765": {
+      "buy_tx": "0xb138bfbf6d426fbc4e234d72ffdc6e5949f7905f199207426f8f9b53dbfe51b9",
+      "block": 53946847,
+      "amount": 135.08,
+      "eth_spent": 1e-05
+    },
+    "0x4d192365c30928533577a023b05663e5f48b3025": {
+      "buy_tx": "0x9ccbc8e4be86d32ad828f1fe2f3f891a3f4e0a1288cef4fe5118c767d6db5981",
+      "block": 53946848,
+      "amount": 42680.08,
+      "eth_spent": 0.05
+    },
+    "0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f": {
+      "buy_tx": "0x69927d83d09b82478dc483dcb5df636e1c0d16f81c6961c1acd0ef9c079cc79a",
+      "block": 53946849,
+      "amount": 5965.44,
+      "eth_spent": 0.0
+    }
+  }
+}

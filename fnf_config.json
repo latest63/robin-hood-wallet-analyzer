@@ -1,0 +1,23 @@
+{
+  "chain_id": 46630,
+  "name": "FnF - Family & Friends (Robinhood Chain Mainnet)",
+  "rpc": "https://rpc.mainnet.chain.robinhood.com",
+  "explorer": "https://robinhoodchain.blockscout.com/api/v2",
+  "factory": "0x4FEbC267e0C24440bcDEF72B5DBC5FE7BED091dF",
+  "launch_event": "0x56eef5c350583250e71791d6d659f4d181796c9deb08b977252efc3995aa9279",
+  "buy_event": "0x8a5254432535d4192429d2cc163283a57784eac274295fcda17cc659c1ee414c",
+  "our_wallet": "0x112152210bff03670229182e5a104e416862a12b",
+  "early_window_seconds": 300,
+  "min_cohort_eth": 1e+13,
+  "min_shared_launches": 2,
+  "block_seconds": 0.117,
+  "min_edge_lift": 4.0,
+  "max_launches": 400,
+  "signal_min_members": 2,
+  "discord_webhook": "[REDACTED]",
+  "signal_min_cluster_hitrate": 0.15,
+  "exclude_wallets": [
+    "0x112152210bff03670229182e5a104e416862a12b",
+    "0x50a044a61e8d3e706ebaa6f5fe7ba4b6eecdec71"
+  ]
+}

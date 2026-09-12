@@ -1,0 +1,34 @@
+{
+ "wallets": {
+  "0x8366a39cc670b4001a1121b8f6a443a643e40951": {
+   "eth": 61856.887,
+   "contracts": [
+    "0xe0514a254b465c8c804f77230fb1059f84b21e18"
+   ],
+   "appearances": 1
+  },
+  "0x6f02324d20cc679d0e585290caa6b16bacbc0f77": {
+   "eth": 197.1874,
+   "contracts": [
+    "0xe0514a254b465c8c804f77230fb1059f84b21e18"
+   ],
+   "appearances": 1
+  },
+  "0x92d435c96e63c43e12d6d0ab28f6b0b04072f765": {
+   "eth": 115.9064,
+   "contracts": [
+    "0xe0514a254b465c8c804f77230fb1059f84b21e18"
+   ],
+   "appearances": 1
+  }
+ },
+ "contracts": {
+  "0xe0514a254b465c8c804f77230fb1059f84b21e18": {
+   "label": "AMC",
+   "ring_size": 3,
+   "eth": 62170.98,
+   "deploy_block": 60383036,
+   "cohort_size": 3
+  }
+ }
+}

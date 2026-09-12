@@ -1,0 +1,47 @@
+{
+  "token_contract": "0x385f4f8ae47651ce5f58f5265395a669f8281e18",
+  "network": "Robin Hood Chain Mainnet",
+  "deploy_block": 53946846,
+  "target_wallets": {
+    "0x24d655a4ed48bfd4291de041a1f81a11ca456aa6": {
+      "status": "EARLY_BUYER",
+      "first_buy_tx": "0x9cef1c4cd88ab6eb06f6c3762c309a518c806e6c723f357cca7a55694bf4667b",
+      "first_buy_block": 53976421,
+      "amount": 2700000000000000000,
+      "from": "0x8366a39cc670b4001a1121b8f6a443a643e40951"
+    },
+    "0xcc941b23420b1a402e8972b5b3fc329de9ac19df": {
+      "status": "NOT_FOUND_IN_FIRST_1000_BLOCKS"
+    },
+    "0x92d435c96e63c43e12d6d0ab28f6b0b04072f765": {
+      "status": "EARLY_BUYER",
+      "first_buy_tx": "0x3bbbc7cab918c8fd8ae0f7229c03c2d4e3c069db53a9ec23bb969a836c132c67",
+      "first_buy_block": 53976735,
+      "amount": 2000,
+      "from": "0x6f02324d20cc679d0e585290caa6b16bacbc0f77"
+    },
+    "0x4d192365c30928533577a023b05663e5f48b3025": {
+      "status": "NOT_FOUND_IN_FIRST_1000_BLOCKS"
+    },
+    "0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f": {
+      "status": "NOT_FOUND_IN_FIRST_1000_BLOCKS"
+    }
+  },
+  "known_contracts_pools": [
+    {
+      "address": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+      "type": "PoolManager",
+      "role": "Central distribution hub"
+    },
+    {
+      "address": "0x6f02324d20cc679d0e585290caa6b16bacbc0f77",
+      "type": "DEX Router",
+      "role": "Intermediary"
+    },
+    {
+      "address": "0x4e3468951d49f2eea976ed0d6e75ffcb44a9a544",
+      "type": "DEX Router",
+      "role": "Secondary routing"
+    }
+  ]
+}

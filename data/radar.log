@@ -1,0 +1,109 @@
+[FnF-radar] 13:46:40 start block 117480975, ring size 129, webhook=OFF (log-only)
+[FnF-radar] 13:46:41 start block 117481275, ring size 129, webhook=OFF (log-only)
+Traceback (most recent call last):
+  File "/home/ubuntu/.hermes/scripts/cluster-signal/fnf_alert.py", line 186, in <module>
+    main()
+  File "/home/ubuntu/.hermes/scripts/cluster-signal/fnf_alert.py", line 136, in main
+    hts = int(fb.rpc("eth_getBlockByNumber", [hex(head), False])["timestamp"], 16)
+              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+[FnF-radar] 13:49:46 start block 117482372, ring size 129, webhook=OFF (log-only)
+[FnF-radar] 13:50:13 🟡 Ring buy detected — score 25/100  curve=0xd99e92555d07723abc5edc7dc280b5eb9f0b3f42  matched=2  eth=0.0008
+[FnF-radar] 13:52:00 🟡 Ring buy detected — score 25/100  curve=0x5fda44b386bf3e71eea2bd9bf6e31710caa4f6a0  matched=2  eth=0.0008
+[FnF-radar] 13:52:15 enriched 0xd99e92555d07723abc5edc7dc280b5eb9f0b3f42: cohort=11 signal=yes
+[FnF-radar] 13:54:04 enriched 0x5fda44b386bf3e71eea2bd9bf6e31710caa4f6a0: cohort=30 signal=yes
+[FnF-radar] 13:55:17 🟡 Ring buy detected — score 25/100  curve=0x40451af484a8a70ee471463573f07aa4727dfc2f  matched=2  eth=0.0008
+[FnF-radar] 13:56:05 🟡 Ring buy detected — score 25/100  curve=0x740058971a03710a0b8159027b87a803a54c8110  matched=2  eth=0.0008
+[FnF-radar] 13:56:19 🟡 Ring buy detected — score 25/100  curve=0x694ce2c98773329bdc82a2d5f491d6272e53c237  matched=2  eth=0.0008
+[FnF-radar] 13:57:07 🟡 Ring buy detected — score 25/100  curve=0xc9ec2999c0ec00836135fef1bf023bf6a3c63112  matched=2  eth=0.0009
+[FnF-radar] 13:57:21 enriched 0x40451af484a8a70ee471463573f07aa4727dfc2f: cohort=17 signal=yes
+[FnF-radar] 13:57:35 🟡 Ring buy detected — score 25/100  curve=0xd2ad0debefbd45e4e703f566d707ff22ea46ce57  matched=2  eth=0.0008
+[FnF-radar] 13:58:11 enriched 0x740058971a03710a0b8159027b87a803a54c8110: cohort=3 signal=no
+[FnF-radar] 13:58:24 enriched 0x694ce2c98773329bdc82a2d5f491d6272e53c237: cohort=9 signal=yes
+[FnF-radar] 13:59:10 enriched 0xc9ec2999c0ec00836135fef1bf023bf6a3c63112: cohort=28 signal=yes
+[FnF-radar] 13:59:37 enriched 0xd2ad0debefbd45e4e703f566d707ff22ea46ce57: cohort=9 signal=yes
+[FnF-radar] 14:01:53 🟡 Ring buy detected — score 25/100  curve=0xcfed2c9f2bbc3978ff112c47f2159c289a64a8aa  matched=2  eth=0.0008
+[FnF-radar] 14:02:39 🟡 Ring buy detected — score 38/100  curve=0xc476bde57f3dab8f62219d5a551c314fe883ffda  matched=3  eth=0.0013
+[FnF-radar] 14:02:53 🟡 Ring buy detected — score 25/100  curve=0xbe0da4226def250902626bb77db97e031e6df94e  matched=2  eth=0.0014
+[FnF-radar] 14:03:32 🟡 Ring buy detected — score 25/100  curve=0x5b70306b4f9881ef6dce9c94be62a91789775c0d  matched=2  eth=0.0008
+[FnF-radar] 14:03:55 enriched 0xcfed2c9f2bbc3978ff112c47f2159c289a64a8aa: cohort=10 signal=yes
+[FnF-radar] 14:04:00 🟡 Ring buy detected — score 25/100  curve=0x9815915aafdea3686413349eb065f8fc56614eae  matched=2  eth=0.0008
+[FnF-radar] 14:04:41 enriched 0xc476bde57f3dab8f62219d5a551c314fe883ffda: cohort=22 signal=yes
+[FnF-radar] 14:04:55 🟡 Ring buy detected — score 25/100  curve=0x57fafdd8d5f6a5bf0ec4ab4662d0939e7e595b40  matched=2  eth=0.0008
+[FnF-radar] 14:04:56 enriched 0xbe0da4226def250902626bb77db97e031e6df94e: cohort=17 signal=yes
+[FnF-radar] 14:05:36 enriched 0x5b70306b4f9881ef6dce9c94be62a91789775c0d: cohort=18 signal=yes
+[FnF-radar] 14:06:04 enriched 0x9815915aafdea3686413349eb065f8fc56614eae: cohort=13 signal=yes
+[FnF-radar] 14:06:57 enriched 0x57fafdd8d5f6a5bf0ec4ab4662d0939e7e595b40: cohort=15 signal=yes
+[FnF-radar] 14:09:40 🟡 Ring buy detected — score 25/100  curve=0xcd6666c9cbfb1d45c5895f866da92ff0c022b9f6  matched=2  eth=0.0008
+[FnF-radar] 14:10:13 🟡 Ring buy detected — score 38/100  curve=0x5695b1837e265d3f3b60be3302ad677d0b6c379d  matched=3  eth=0.0012
+[FnF-radar] 14:10:28 🟠 Ring buy detected (escalation) — score 62/100  curve=0x5695b1837e265d3f3b60be3302ad677d0b6c379d  matched=5  eth=0.0024
+[FnF-radar] 14:10:41 🟠 Ring buy detected (escalation) — score 50/100  curve=0xcd6666c9cbfb1d45c5895f866da92ff0c022b9f6  matched=4  eth=0.0016
+[FnF-radar] 14:11:48 enriched 0xcd6666c9cbfb1d45c5895f866da92ff0c022b9f6: cohort=13 signal=yes
+[FnF-radar] 14:11:56 🟡 Ring buy detected — score 38/100  curve=0xcd6666c9cbfb1d45c5895f866da92ff0c022b9f6  matched=3  eth=0.0012
+[FnF-radar] 14:12:17 enriched 0x5695b1837e265d3f3b60be3302ad677d0b6c379d: cohort=51 signal=yes
+[FnF-radar] 14:12:51 enriched 0xcd6666c9cbfb1d45c5895f866da92ff0c022b9f6: cohort=13 signal=yes
+[FnF-radar] 14:14:54 🟡 Ring buy detected — score 25/100  curve=0x386148e0211b3bf33fda9339e7fe1caf329f7d4c  matched=2  eth=0.0008
+[FnF-radar] 14:15:31 🟡 Ring buy detected — score 38/100  curve=0x62675f27e90c8fb5260bfe427639e77198a83a5e  matched=3  eth=0.0012
+[FnF-radar] 14:16:58 enriched 0x386148e0211b3bf33fda9339e7fe1caf329f7d4c: cohort=14 signal=yes
+[FnF-radar] 14:17:31 enriched 0x62675f27e90c8fb5260bfe427639e77198a83a5e: cohort=15 signal=yes
+[FnF-radar] 14:21:51 🟡 Ring buy detected — score 38/100  curve=0xc50c3ecdd47311fcb313d02dc9bd983511b3ca73  matched=3  eth=0.0012
+[FnF-radar] 14:21:58 🟡 Ring buy detected — score 25/100  curve=0x753ce5c066ea227a7d00da5c213480de39148595  matched=2  eth=0.0008
+[FnF-radar] 14:23:53 enriched 0xc50c3ecdd47311fcb313d02dc9bd983511b3ca73: cohort=8 signal=no
+[FnF-radar] 14:24:00 enriched 0x753ce5c066ea227a7d00da5c213480de39148595: cohort=10 signal=yes
+[FnF-radar] 14:25:46 🟡 Ring buy detected — score 25/100  curve=0x846d77dd267a7c8ccee39e197d91ca0f743142c1  matched=2  eth=0.0008
+[FnF-radar] 14:26:39 🟡 Ring buy detected — score 25/100  curve=0xac8699b6e8e69fb28470052f3a0bc239c4065f44  matched=2  eth=0.0009
+[FnF-radar] 14:26:59 🟡 Ring buy detected — score 25/100  curve=0x8a107bb12e22b2c8ace5afe445a0f43130cf72c9  matched=2  eth=0.0008
+[FnF-radar] 14:27:26 🟡 Ring buy detected — score 25/100  curve=0xe2e3a585c2de70787bc28bab3ceac5a3fbbcdb80  matched=2  eth=0.0008
+[FnF-radar] 14:27:47 enriched 0x846d77dd267a7c8ccee39e197d91ca0f743142c1: cohort=39 signal=yes
+[FnF-radar] 14:28:12 🟡 Ring buy detected — score 25/100  curve=0xe251ca99151aa55f255c5ceb80c8c4803179a1ec  matched=2  eth=0.0008
+[FnF-radar] 14:28:46 enriched 0xac8699b6e8e69fb28470052f3a0bc239c4065f44: cohort=16 signal=yes
+[FnF-radar] 14:29:06 enriched 0x8a107bb12e22b2c8ace5afe445a0f43130cf72c9: cohort=14 signal=yes
+[FnF-radar] 14:29:32 enriched 0xe2e3a585c2de70787bc28bab3ceac5a3fbbcdb80: cohort=16 signal=yes
+[FnF-radar] 14:30:12 enriched 0xe251ca99151aa55f255c5ceb80c8c4803179a1ec: cohort=29 signal=yes
+[FnF-radar] 14:30:44 🟡 Ring buy detected — score 25/100  curve=0x861085d641a4d29a3f34959b57b687346ffac240  matched=2  eth=0.0008
+[FnF-radar] 14:32:27 🟡 Ring buy detected — score 25/100  curve=0x6f24b18fa1caef7e97b0ed939c2069b933bda854  matched=2  eth=0.0008
+[FnF-radar] 14:32:33 🟠 Ring buy detected (escalation) — score 50/100  curve=0x6f24b18fa1caef7e97b0ed939c2069b933bda854  matched=4  eth=0.0017
+[FnF-radar] 14:32:48 enriched 0x861085d641a4d29a3f34959b57b687346ffac240: cohort=22 signal=no
+[FnF-radar] 14:32:53 🔴 Ring buy detected (escalation) — score 75/100  curve=0x6f24b18fa1caef7e97b0ed939c2069b933bda854  matched=6  eth=0.0029
+[FnF-radar] 14:33:06 🔴 Ring buy detected (escalation) — score 100/100  curve=0x6f24b18fa1caef7e97b0ed939c2069b933bda854  matched=8  eth=0.0037
+[FnF-radar] 14:34:12 🟡 Ring buy detected — score 25/100  curve=0x822164dfe22ec19f68d242aec46d63af8a8d8b18  matched=2  eth=0.0008
+[FnF-radar] 14:34:35 enriched 0x6f24b18fa1caef7e97b0ed939c2069b933bda854: cohort=59 signal=yes
+[FnF-radar] 14:34:41 🟠 Ring buy detected — score 62/100  curve=0x6f24b18fa1caef7e97b0ed939c2069b933bda854  matched=5  eth=0.0020
+[FnF-radar] 14:35:10 enriched 0x6f24b18fa1caef7e97b0ed939c2069b933bda854: cohort=59 signal=yes
+[FnF-radar] 14:36:23 enriched 0x822164dfe22ec19f68d242aec46d63af8a8d8b18: cohort=15 signal=yes
+[FnF-radar] 14:39:17 🟡 Ring buy detected — score 25/100  curve=0x253b15e030b8ea9db5085ebda065b86323d36b9a  matched=2  eth=0.0009
+[FnF-radar] 14:39:30 🟠 Ring buy detected (escalation) — score 50/100  curve=0x253b15e030b8ea9db5085ebda065b86323d36b9a  matched=4  eth=0.0017
+[FnF-radar] 14:41:17 🟡 Ring buy detected — score 25/100  curve=0x7cb47d31c55df974a88dae33e7404b82b1199900  matched=2  eth=0.0008
+[FnF-radar] 14:41:19 enriched 0x253b15e030b8ea9db5085ebda065b86323d36b9a: cohort=18 signal=yes
+[FnF-radar] 14:41:37 🟡 Ring buy detected — score 25/100  curve=0x137dd1200544abed7f02f67aed0ff4edde0198eb  matched=2  eth=0.0008
+[FnF-radar] 14:42:37 🟡 Ring buy detected — score 25/100  curve=0x4d3f9ab3b9f3aae365deec8903f6a3d3afffabea  matched=2  eth=0.0008
+[FnF-radar] 14:43:19 enriched 0x7cb47d31c55df974a88dae33e7404b82b1199900: cohort=12 signal=yes
+[FnF-radar] 14:43:46 enriched 0x137dd1200544abed7f02f67aed0ff4edde0198eb: cohort=7 signal=yes
+[FnF-radar] 14:44:41 enriched 0x4d3f9ab3b9f3aae365deec8903f6a3d3afffabea: cohort=13 signal=yes
+[FnF-radar] 14:46:15 🟠 Ring buy detected — score 50/100  curve=0x6d0bc6038f473f33db8c17e94cafbcafec41a13f  matched=4  eth=0.0017
+[FnF-radar] 14:46:22 🔴 Ring buy detected (escalation) — score 75/100  curve=0x6d0bc6038f473f33db8c17e94cafbcafec41a13f  matched=6  eth=0.0025
+[FnF-radar] 14:48:03 🟡 Ring buy detected — score 38/100  curve=0xdb19c55fbe9e9f3b473c4b1788219e8b59c79f55  matched=3  eth=0.0016
+[FnF-radar] 14:48:16 🟠 Ring buy detected (escalation) — score 62/100  curve=0xdb19c55fbe9e9f3b473c4b1788219e8b59c79f55  matched=5  eth=0.0024
+[FnF-radar] 14:48:24 enriched 0x6d0bc6038f473f33db8c17e94cafbcafec41a13f: cohort=14 signal=yes
+[FnF-radar] 14:48:31 🔴 Ring buy detected (escalation) — score 88/100  curve=0xdb19c55fbe9e9f3b473c4b1788219e8b59c79f55  matched=7  eth=0.0033
+[FnF-radar] 14:49:12 🔴 Ring buy detected (escalation) — score 100/100  curve=0xdb19c55fbe9e9f3b473c4b1788219e8b59c79f55  matched=9  eth=0.0041
+[FnF-radar] 14:50:08 enriched 0xdb19c55fbe9e9f3b473c4b1788219e8b59c79f55: cohort=41 signal=yes
+[FnF-radar] 14:50:14 🟠 Ring buy detected — score 50/100  curve=0xdb19c55fbe9e9f3b473c4b1788219e8b59c79f55  matched=4  eth=0.0017
+[FnF-radar] 14:51:17 start block 117511236, ring size 129, webhook=on
+[FnF-radar] 14:51:18 enriched 0xdb19c55fbe9e9f3b473c4b1788219e8b59c79f55: cohort=41 signal=yes
+[FnF-radar] 14:51:19 webhook err: HTTP Error 403: Forbidden
+[FnF-radar] 14:51:32 🟡 Ring buy detected — score 25/100  curve=0xe697399442ec8ad070eabae59930b5dfe90f2826  matched=2  eth=0.0008
+[FnF-radar] 14:51:32 webhook err: HTTP Error 403: Forbidden
+[FnF-radar] 14:51:50 start block 117511576, ring size 129, webhook=on
+[FnF-radar] 14:52:24 🟡 Ring buy detected — score 25/100  curve=0x29f27a71cd748d25192bcdb0b2019c510ca6254d  matched=2  eth=0.0008
+[FnF-radar] 14:53:33 enriched 0xe697399442ec8ad070eabae59930b5dfe90f2826: cohort=13 signal=no
+[FnF-radar] 14:53:54 🟡 Ring buy detected — score 25/100  curve=0x5d8ad3457fbe76b5e3a0868890a6b4f63f43b3b6  matched=2  eth=0.0008
+[FnF-radar] 14:54:31 enriched 0x29f27a71cd748d25192bcdb0b2019c510ca6254d: cohort=11 signal=yes
+[FnF-radar] 14:56:01 enriched 0x5d8ad3457fbe76b5e3a0868890a6b4f63f43b3b6: cohort=14 signal=yes
+[FnF-radar] 14:57:31 🟡 Ring buy detected — score 38/100  curve=0x7cfd88b367f127e485e19b298e95e6b666060126  matched=3  eth=0.0012
+[FnF-radar] 14:57:57 🟠 Ring buy detected (escalation) — score 62/100  curve=0x7cfd88b367f127e485e19b298e95e6b666060126  matched=5  eth=0.0024
+[FnF-radar] 14:59:14 🔴 Ring buy detected (escalation) — score 88/100  curve=0x7cfd88b367f127e485e19b298e95e6b666060126  matched=7  eth=0.0038
+[FnF-radar] 14:59:37 enriched 0x7cfd88b367f127e485e19b298e95e6b666060126: cohort=22 signal=yes
+[FnF-radar] 14:59:42 🟠 Ring buy detected — score 62/100  curve=0x7cfd88b367f127e485e19b298e95e6b666060126  matched=5  eth=0.0026
+[FnF-radar] 15:01:29 enriched 0x7cfd88b367f127e485e19b298e95e6b666060126: cohort=22 signal=yes
+[FnF-radar] 15:05:13 🟡 Ring buy detected — score 25/100  curve=0x176564ae6c06712554242f8cb467c94cc64fed9d  matched=2  eth=0.0008

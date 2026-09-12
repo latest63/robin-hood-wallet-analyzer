@@ -1,0 +1,47 @@
+[
+  {
+    "address": "0x24d655a4ed48bfd4291de041a1f81a11ca456aa6",
+    "tx_count": 0,
+    "eth_balance": 0,
+    "is_contract": false,
+    "status": "INACTIVE",
+    "note": "No activity",
+    "transfers": []
+  },
+  {
+    "address": "0xcc941b23420b1a402e8972b5b3fc329de9ac19df",
+    "tx_count": 0,
+    "eth_balance": 0,
+    "is_contract": false,
+    "status": "INACTIVE",
+    "note": "No activity",
+    "transfers": []
+  },
+  {
+    "address": "0x92d435c96e63c43e12d6d0ab28f6b0b04072f765",
+    "tx_count": 0,
+    "eth_balance": 0,
+    "is_contract": false,
+    "status": "INACTIVE",
+    "note": "No activity",
+    "transfers": []
+  },
+  {
+    "address": "0x4d192365c30928533577a023b05663e5f48b3025",
+    "tx_count": 0,
+    "eth_balance": 0,
+    "is_contract": false,
+    "status": "INACTIVE",
+    "note": "No activity",
+    "transfers": []
+  },
+  {
+    "address": "0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f",
+    "tx_count": 0,
+    "eth_balance": 0,
+    "is_contract": false,
+    "status": "INACTIVE",
+    "note": "No activity",
+    "transfers": []
+  }
+]
