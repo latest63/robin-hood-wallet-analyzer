@@ -36,7 +36,7 @@ class WalletInfo(BaseModel):
     address: str
     type: str
     badge: str
-    amount: float
+    amount: str
     first_buy_block: Optional[int]
     tx_hash: Optional[str]
     tx_count: int
