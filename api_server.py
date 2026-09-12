@@ -177,8 +177,11 @@ def decode_string_result(hex_data: str) -> str:
         return ""
     try:
         raw = hex_data[2:]
+        # Decode as UTF-8
         decoded = bytes.fromhex(raw).decode('utf-8', errors='ignore')
-        return decoded.strip('\x00')
+        # Strip null bytes and whitespace
+        cleaned = decoded.replace('\x00', '').strip()
+        return cleaned
     except:
         return ""
 
@@ -285,8 +288,9 @@ async def classify_wallets(transfers: list, token_address: str) -> list[WalletIn
     for addr in addr_list:
         wallet_stats[addr]["is_contract"] = all_results[idx].get("result", "0x") != "0x"
         idx += 1
-        eth_bal = hex_to_int(all_results[idx].get("result", "0x0")) / 1e18
-        wallet_stats[addr]["eth_balance"] = round(eth_bal, 4)
+        eth_bal_raw = hex_to_int(all_results[idx].get("result", "0x0"))
+        eth_bal = round(eth_bal_raw / 1e18, 4) if eth_bal_raw < 1e30 else 999999.0  # Cap at 1M ETH
+        wallet_stats[addr]["eth_balance"] = eth_bal
         idx += 1
         wallet_stats[addr]["tx_count"] = hex_to_int(all_results[idx].get("result", "0x0"))
         idx += 1
@@ -394,7 +398,10 @@ async def scan(request: ContractRequest):
             }
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"ERROR in scan: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"{str(e)}")
 
 
 @app.get("/wallet/{address}")
