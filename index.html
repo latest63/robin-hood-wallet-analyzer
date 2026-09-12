@@ -13,7 +13,6 @@
             --card: #1a1a2e;
             --border: #2a2a3e;
             --primary: #6366f1;
-            --primary-glow: rgba(99, 102, 241, 0.3);
             --success: #10b981;
             --warning: #f59e0b;
             --danger: #ef4444;
@@ -35,7 +34,6 @@
             padding: 16px;
         }
         
-        /* Header */
         .header {
             text-align: center;
             padding: 20px 0;
@@ -56,7 +54,6 @@
             margin-top: 4px;
         }
         
-        /* Search */
         .search-box {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -79,15 +76,10 @@
             color: var(--text);
             font-size: 14px;
             outline: none;
-            transition: border-color 0.2s;
         }
         
         .input-group input:focus {
             border-color: var(--primary);
-        }
-        
-        .input-group input::placeholder {
-            color: var(--text-dim);
         }
         
         .btn {
@@ -99,20 +91,8 @@
             font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
         }
         
-        .btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 20px var(--primary-glow);
-        }
-        
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        /* Stats */
         .stats {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -140,34 +120,6 @@
             margin-top: 2px;
         }
         
-        /* Filters */
-        .filters {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 14px;
-            overflow-x: auto;
-            padding-bottom: 4px;
-        }
-        
-        .chip {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 6px 14px;
-            font-size: 12px;
-            color: var(--text-muted);
-            cursor: pointer;
-            white-space: nowrap;
-            transition: all 0.2s;
-        }
-        
-        .chip.active {
-            background: var(--primary);
-            border-color: var(--primary);
-            color: white;
-        }
-        
-        /* Wallet cards */
         .wallet-list {
             display: flex;
             flex-direction: column;
@@ -179,18 +131,6 @@
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 14px;
-            transition: all 0.2s;
-            animation: slideUp 0.3s ease;
-        }
-        
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .wallet-card:hover {
-            border-color: var(--primary);
-            transform: translateY(-2px);
         }
         
         .wallet-header {
@@ -198,23 +138,6 @@
             align-items: center;
             justify-content: space-between;
             margin-bottom: 10px;
-        }
-        
-        .wallet-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .wallet-avatar {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--primary), #a855f7);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
         }
         
         .wallet-name {
@@ -263,23 +186,6 @@
             font-weight: 600;
         }
         
-        .tx-hash {
-            font-family: monospace;
-            font-size: 10px;
-            color: var(--text-muted);
-            word-break: break-all;
-        }
-        
-        /* Empty & Loading */
-        .empty-state, .loading {
-            text-align: center;
-            padding: 40px 20px;
-        }
-        
-        .empty-icon { font-size: 48px; margin-bottom: 16px; }
-        .empty-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
-        .empty-desc { font-size: 13px; color: var(--text-muted); }
-        
         .spinner {
             width: 40px;
             height: 40px;
@@ -287,32 +193,17 @@
             border-top-color: var(--primary);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
-            margin: 0 auto 16px;
+            margin: 40px auto;
         }
         
         @keyframes spin { to { transform: rotate(360deg); } }
         
-        /* Token info banner */
-        .token-banner {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 14px;
-            margin-bottom: 16px;
-            display: none;
-        }
-        
-        .token-banner h3 {
-            font-size: 16px;
-            margin-bottom: 4px;
-        }
-        
-        .token-banner p {
-            font-size: 12px;
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
             color: var(--text-muted);
         }
         
-        /* Error state */
         .error-msg {
             background: rgba(239, 68, 68, 0.1);
             border: 1px solid var(--danger);
@@ -341,11 +232,6 @@
         
         <div id="errorBar" class="error-msg"></div>
         
-        <div id="tokenBanner" class="token-banner">
-            <h3 id="tokenName">Loading...</h3>
-            <p id="tokenDetails">Deploy block: ---</p>
-        </div>
-        
         <div class="stats" id="statsSection" style="display: none;">
             <div class="stat-card">
                 <div class="stat-value" id="totalWallets">0</div>
@@ -361,26 +247,16 @@
             </div>
         </div>
         
-        <div class="filters" id="filters" style="display: none;">
-            <div class="chip active" data-filter="all" onclick="filterWallets('all')">All</div>
-            <div class="chip" data-filter="buyer" onclick="filterWallets('buyer')">Buyers</div>
-            <div class="chip" data-filter="contract" onclick="filterWallets('contract')">Contracts</div>
-            <div class="chip" data-filter="burner" onclick="filterWallets('burner')">Burners</div>
-        </div>
-        
         <div class="wallet-list" id="walletList">
             <div class="empty-state">
-                <div class="empty-icon">🔍</div>
-                <h3 class="empty-title">Ready to Scan</h3>
-                <p class="empty-desc">Enter any token contract address on Robin Hood Chain mainnet</p>
+                <p>Enter any token contract address on Robin Hood Chain mainnet</p>
             </div>
         </div>
     </div>
     
     <script>
-        const API_URL = window.location.origin;
+        const API_URL = window.location.origin || 'http://localhost:8000';
         let currentData = null;
-        let currentFilter = 'all';
         
         document.getElementById('contractInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') scanContract();
@@ -402,10 +278,10 @@
             setLoading(true);
             
             try {
-                const response = await fetch(`${API_URL}/scan`, {
+                const response = await fetch(API_URL + '/scan', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ address, block_range: 5000 })
+                    body: JSON.stringify({ address: address.toLowerCase(), block_range: 2000 })
                 });
                 
                 if (!response.ok) {
@@ -426,42 +302,25 @@
         }
         
         function displayResults(data) {
-            // Token banner
-            document.getElementById('tokenBanner').style.display = 'block';
-            document.getElementById('tokenName').textContent = `${data.token.name} (${data.token.symbol})`;
-            document.getElementById('tokenDetails').textContent = 
-                `Deployed: Block ${data.token.deploy_block.toLocaleString()} • Supply: ${data.token.supply.toLocaleString()} • Transfers: ${data.token.total_transfers}`;
-            
             // Stats
             document.getElementById('totalWallets').textContent = data.stats.total_wallets;
             document.getElementById('realBuyers').textContent = data.stats.real_buyers;
             document.getElementById('botsFiltered').textContent = data.stats.contracts_filtered + data.stats.burners_filtered;
             document.getElementById('statsSection').style.display = 'grid';
-            document.getElementById('filters').style.display = 'flex';
             
             // Wallet list
             renderWallets(data.wallets);
         }
         
         function renderWallets(wallets) {
-            const filtered = currentFilter === 'all' 
-                ? wallets 
-                : wallets.filter(w => w.type === currentFilter);
-            
             const list = document.getElementById('walletList');
             
-            if (filtered.length === 0) {
-                list.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon">🎯</div>
-                        <h3 class="empty-title">No Results</h3>
-                        <p class="empty-desc">No wallets match this filter</p>
-                    </div>
-                `;
+            if (wallets.length === 0) {
+                list.innerHTML = '<div class="empty-state"><p>No wallets found</p></div>';
                 return;
             }
             
-            list.innerHTML = filtered.map((w, i) => {
+            list.innerHTML = wallets.map((w, i) => {
                 const icon = w.type === 'buyer' ? '💎' : 
                             w.type === 'contract' ? '📦' : 
                             w.type === 'burner' ? '🔥' : '⚙️';
@@ -470,34 +329,25 @@
                                   w.type === 'pool_manager' ? 'badge-pool' : 'badge-contract';
                 
                 return `
-                    <div class="wallet-card" style="animation-delay: ${i * 0.05}s">
+                    <div class="wallet-card">
                         <div class="wallet-header">
-                            <div class="wallet-info">
-                                <div class="wallet-avatar">${icon}</div>
-                                <div>
-                                    <div class="wallet-name">${w.badge}</div>
-                                    <div class="wallet-address">${w.address}</div>
-                                </div>
+                            <div>
+                                <div class="wallet-name">${icon} ${w.badge}</div>
+                                <div class="wallet-address">${w.address}</div>
                             </div>
-                            <span class="wallet-badge ${badgeClass}">${w.badge}</span>
+                            <span class="wallet-badge ${badgeClass}">${w.type.toUpperCase()}</span>
                         </div>
                         <div class="wallet-details">
                             <div class="detail-item">
-                                <div class="detail-label">Amount Received</div>
+                                <div class="detail-label">Amount</div>
                                 <div class="detail-value">${w.amount}</div>
                             </div>
                             <div class="detail-item">
-                                <div class="detail-label">First Seen</div>
-                                <div class="detail-value">${w.first_buy_block ? '#' + w.first_buy_block.toLocaleString() : '—'}</div>
+                                <div class="detail-label">First Block</div>
+                                <div class="detail-value">#${w.first_buy_block ? w.first_buy_block.toLocaleString() : '—'}</div>
                             </div>
-                            ${w.tx_hash ? `
-                            <div class="detail-item" style="grid-column: 1 / -1">
-                                <div class="detail-label">First TX Hash</div>
-                                <div class="tx-hash">${w.tx_hash}</div>
-                            </div>
-                            ` : ''}
                             <div class="detail-item">
-                                <div class="detail-label">Total TXs</div>
+                                <div class="detail-label">TX Count</div>
                                 <div class="detail-value">${w.tx_count}</div>
                             </div>
                             <div class="detail-item">
@@ -510,15 +360,6 @@
             }).join('');
         }
         
-        function filterWallets(filter) {
-            currentFilter = filter;
-            document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-            document.querySelector(`.chip[data-filter="${filter}"]`).classList.add('active');
-            if (currentData) {
-                renderWallets(currentData.wallets);
-            }
-        }
-        
         function setLoading(loading) {
             const btn = document.getElementById('scanBtn');
             const list = document.getElementById('walletList');
@@ -526,12 +367,7 @@
             if (loading) {
                 btn.disabled = true;
                 btn.textContent = 'Scanning...';
-                list.innerHTML = `
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p class="empty-desc">Querying blockchain for early buyers...</p>
-                    </div>
-                `;
+                list.innerHTML = '<div class="spinner"></div>';
             } else {
                 btn.disabled = false;
                 btn.textContent = 'Scan';
@@ -539,9 +375,8 @@
         }
         
         function showError(msg) {
-            const bar = document.getElementById('errorBar');
-            bar.textContent = msg;
-            bar.style.display = 'block';
+            document.getElementById('errorBar').style.display = 'block';
+            document.getElementById('errorBar').textContent = msg;
         }
         
         function hideError() {
