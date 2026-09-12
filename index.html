@@ -184,42 +184,54 @@
             
             try {
                 const addr = address.toLowerCase();
-                const [currentBlock, name, symbol, decimals, supply, logs] = await Promise.all([
-                    rpcCall('eth_blockNumber', []),
+                
+                // Get current block first
+                const blockResp = await rpcCall('eth_blockNumber', []);
+                const currentBlock = hexToInt(blockResp);
+                const deployBlock = Math.max(0, currentBlock - 5000);
+                
+                // Get token info and logs in parallel
+                const [name, symbol, decimals, supply, logs] = await Promise.all([
                     rpcCall('eth_call', [{ to: addr, data: '0x06fdde03' }, 'latest']),
                     rpcCall('eth_call', [{ to: addr, data: '0x95d89b41' }, 'latest']),
                     rpcCall('eth_call', [{ to: addr, data: '0x313ce567' }, 'latest']),
                     rpcCall('eth_call', [{ to: addr, data: '0x18160ddd' }, 'latest']),
                     rpcCall('eth_getLogs', [{
-                        fromBlock: '0x0',
-                        toBlock: currentBlock,
+                        fromBlock: '0x' + deployBlock.toString(16),
+                        toBlock: '0x' + currentBlock.toString(16),
                         address: addr,
                         topics: [TRANSFER_TOPIC]
                     }])
                 ]);
                 
-                const deployBlock = hexToInt(currentBlock) - 2000;
-                const tokens = logs.filter(l => l.topics && l.topics.length >= 3);
+                if (!logs || !Array.isArray(logs)) {
+                    showError('No transfer data found');
+                    return;
+                }
+                
+                const deployBlockNum = hexToInt(blockResp) - 2000;
                 const walletMap = new Map();
                 
-                for (const log of tokens) {
+                for (const log of logs) {
+                    if (!log.topics || log.topics.length < 3) continue;
+                    
                     const toAddr = '0x' + log.topics[2].slice(26);
                     const amount = BigInt(log.data || '0x0');
                     
                     if (!walletMap.has(toAddr)) {
-                        walletMap.set(toAddr, { received: 0, blocks: [], txHashes: new Set(), firstBlock: Infinity });
+                        walletMap.set(toAddr, { received: 0n, blocks: [], txHashes: new Set(), firstBlock: Infinity });
                     }
                     walletMap.get(toAddr).received += amount;
                     const block = hexToInt(log.blockNumber);
                     walletMap.get(toAddr).blocks.push(block);
-                    walletMap.get(toAddr).txHashes.add(log.transactionHash);
+                    if (log.transactionHash) walletMap.get(toAddr).txHashes.add(log.transactionHash);
                     walletMap.get(toAddr).firstBlock = Math.min(walletMap.get(toAddr).firstBlock, block);
                 }
                 
                 const wallets = [];
-                for (const [addr, data] of walletMap) {
-                    const code = await rpcCall('eth_getCode', [addr, 'latest']);
-                    const isContract = code && code !== '0x' && code !== '0x0';
+                for (const [wAddr, data] of walletMap) {
+                    const codeResp = await rpcCall('eth_getCode', [wAddr, 'latest']);
+                    const isContract = codeResp && codeResp !== '0x' && codeResp !== '0x0';
                     
                     let wtype, badge;
                     if (data.received > BigInt(1e12)) {
@@ -232,7 +244,7 @@
                     }
                     
                     wallets.push({
-                        address: addr,
+                        address: wAddr,
                         type: wtype,
                         badge: badge,
                         amount: formatAmount(Number(data.received), hexToInt(decimals)),
@@ -240,7 +252,7 @@
                         tx_hash: [...data.txHashes][0],
                         tx_count: data.txHashes.size,
                         eth_balance: 0,
-                        burst_score: Math.min(100, Math.max(0, 100 - (data.firstBlock - hexToInt(deployBlock))))
+                        burst_score: Math.min(100, Math.max(0, 100 - (data.firstBlock - deployBlockNum)))
                     });
                 }
                 
@@ -248,8 +260,8 @@
                 displayResults(wallets);
                 
             } catch (err) {
-                showError(err.message || 'Failed to scan contract');
                 console.error(err);
+                showError(err.message || 'Failed to scan contract');
             } finally {
                 setLoading(false);
             }
