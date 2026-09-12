@@ -329,7 +329,7 @@ async def classify_wallets(transfers: list, token_address: str) -> list[WalletIn
             first_buy_block=first_block,
             tx_hash=list(stats["tx_hashes"])[0] if stats["tx_hashes"] else None,
             tx_count=len(stats["tx_hashes"]),
-            eth_balance=stats.get("eth_balance", 0)
+            eth_balance=float(stats.get("eth_balance", 0))
         ))
     
     wallets.sort(key=lambda x: x.first_buy_block or 0)
