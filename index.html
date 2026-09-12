@@ -183,46 +183,104 @@
             setLoading(true);
             
             try {
+                console.log('Scanning address:', address);
                 const addr = address.toLowerCase();
                 
                 // Get current block first
-                const blockResp = await rpcCall('eth_blockNumber', []);
-                const currentBlock = hexToInt(blockResp);
+                const blockResp = await fetch(RPC_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_blockNumber', params: [], id: 1 })
+                }).then(r => r.json());
+                
+                if (blockResp.error) {
+                    throw new Error(blockResp.error.message || 'RPC error');
+                }
+                
+                const currentBlock = parseInt(blockResp.result, 16);
                 const deployBlock = Math.max(0, currentBlock - 5000);
+                console.log('Current block:', currentBlock, 'Deploy block range:', deployBlock);
                 
                 // Get token info and logs in parallel
-                const [name, symbol, decimals, supply, logs] = await Promise.all([
-                    rpcCall('eth_call', [{ to: addr, data: '0x06fdde03' }, 'latest']),
-                    rpcCall('eth_call', [{ to: addr, data: '0x95d89b41' }, 'latest']),
-                    rpcCall('eth_call', [{ to: addr, data: '0x313ce567' }, 'latest']),
-                    rpcCall('eth_call', [{ to: addr, data: '0x18160ddd' }, 'latest']),
-                    rpcCall('eth_getLogs', [{
-                        fromBlock: '0x' + deployBlock.toString(16),
-                        toBlock: '0x' + currentBlock.toString(16),
-                        address: addr,
-                        topics: [TRANSFER_TOPIC]
-                    }])
+                const [nameResp, symbolResp, decimalsResp, supplyResp, logsResp] = await Promise.all([
+                    fetch(RPC_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: addr, data: '0x06fdde03' }, 'latest'], id: 1 })
+                    }).then(r => r.json()),
+                    fetch(RPC_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: addr, data: '0x95d89b41' }, 'latest'], id: 1 })
+                    }).then(r => r.json()),
+                    fetch(RPC_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: addr, data: '0x313ce567' }, 'latest'], id: 1 })
+                    }).then(r => r.json()),
+                    fetch(RPC_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: addr, data: '0x18160ddd' }, 'latest'], id: 1 })
+                    }).then(r => r.json()),
+                    fetch(RPC_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            jsonrpc: '2.0',
+                            method: 'eth_getLogs',
+                            params: [{
+                                fromBlock: '0x' + deployBlock.toString(16),
+                                toBlock: '0x' + currentBlock.toString(16),
+                                address: addr,
+                                topics: [TRANSFER_TOPIC]
+                            }],
+                            id: 1
+                        })
+                    }).then(r => r.json())
                 ]);
                 
-                if (!logs || !Array.isArray(logs)) {
-                    showError('No transfer data found');
+                console.log('Logs response:', logsResp);
+                
+                if (logsResp.error) {
+                    throw new Error(logsResp.error.message || 'RPC error in logs');
+                }
+                
+                const logs = logsResp.result || [];
+                console.log('Got', logs.length, 'transfers');
+                
+                if (!Array.isArray(logs) || logs.length === 0) {
+                    showError('No transfer data found in block range');
+                    setLoading(false);
                     return;
                 }
                 
-                const deployBlockNum = hexToInt(blockResp) - 2000;
+                const name = nameResp.result || '';
+                const symbol = symbolResp.result || '';
+                const decimalsHex = decimalsResp.result || '0x12';
+                const supplyHex = supplyResp.result || '0x0';
+                
+                const deployBlockNum = currentBlock - 2000;
                 const walletMap = new Map();
                 
                 for (const log of logs) {
                     if (!log.topics || log.topics.length < 3) continue;
                     
-                    const toAddr = '0x' + log.topics[2].slice(26);
+                    // Extract address from topic - handle both padded and unpadded formats
+                    let topic2 = log.topics[2];
+                    if (topic2 && topic2.startsWith('0x') && topic2.length > 42) {
+                        // Padded format: 0x + 24 zeros + 20 byte address
+                        topic2 = '0x' + topic2.slice(-40);
+                    }
+                    
+                    const toAddr = topic2.toLowerCase();
                     const amount = BigInt(log.data || '0x0');
                     
                     if (!walletMap.has(toAddr)) {
                         walletMap.set(toAddr, { received: 0n, blocks: [], txHashes: new Set(), firstBlock: Infinity });
                     }
                     walletMap.get(toAddr).received += amount;
-                    const block = hexToInt(log.blockNumber);
+                    const block = parseInt(log.blockNumber, 16);
                     walletMap.get(toAddr).blocks.push(block);
                     if (log.transactionHash) walletMap.get(toAddr).txHashes.add(log.transactionHash);
                     walletMap.get(toAddr).firstBlock = Math.min(walletMap.get(toAddr).firstBlock, block);
@@ -230,8 +288,14 @@
                 
                 const wallets = [];
                 for (const [wAddr, data] of walletMap) {
-                    const codeResp = await rpcCall('eth_getCode', [wAddr, 'latest']);
-                    const isContract = codeResp && codeResp !== '0x' && codeResp !== '0x0';
+                    const codeResp = await fetch(RPC_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_getCode', params: [wAddr, 'latest'], id: 1 })
+                    }).then(r => r.json());
+                    
+                    const code = codeResp.result || '';
+                    const isContract = code && code !== '0x' && code !== '0x0' && code.length > 2;
                     
                     let wtype, badge;
                     if (data.received > BigInt(1e12)) {
@@ -243,11 +307,13 @@
                         wtype = 'buyer'; badge = 'Active Wallet';
                     }
                     
+                    const decimals = parseInt(decimalsHex, 16) || 18;
+                    
                     wallets.push({
                         address: wAddr,
                         type: wtype,
                         badge: badge,
-                        amount: formatAmount(Number(data.received), hexToInt(decimals)),
+                        amount: formatAmount(Number(data.received), decimals),
                         first_buy_block: data.firstBlock === Infinity ? null : data.firstBlock,
                         tx_hash: [...data.txHashes][0],
                         tx_count: data.txHashes.size,
@@ -260,7 +326,7 @@
                 displayResults(wallets);
                 
             } catch (err) {
-                console.error(err);
+                console.error('Scan error:', err);
                 showError(err.message || 'Failed to scan contract');
             } finally {
                 setLoading(false);
