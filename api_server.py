@@ -89,9 +89,17 @@ async def run_rpc_async(method: str, params: list) -> dict:
 
 def hex_to_int(hex_str: str) -> int:
     """Convert hex string to int"""
+    if not hex_str or hex_str == "0x" or hex_str == "0x0":
+        return 0
     if hex_str and hex_str.startswith("0x"):
-        return int(hex_str, 16)
-    return int(hex_str) if hex_str else 0
+        try:
+            return int(hex_str, 16)
+        except (ValueError, TypeError):
+            return 0
+    try:
+        return int(hex_str)
+    except (ValueError, TypeError):
+        return 0
 
 
 def format_amount(value: int, decimals: int) -> str:
