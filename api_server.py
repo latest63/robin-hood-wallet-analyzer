@@ -122,10 +122,8 @@ async def get_current_block() -> int:
 
 async def find_deploy_block(address: str, current_block: int) -> int:
     """Find approximate deploy block - scan backward in chunks"""
-    # Start from 1000 blocks back, expand if needed
     search_start = max(0, current_block - 2000)
     
-    # Check if we have transfers in this range
     resp = await run_rpc_async("eth_getLogs", [{
         "fromBlock": hex(search_start),
         "toBlock": hex(current_block),
@@ -135,7 +133,6 @@ async def find_deploy_block(address: str, current_block: int) -> int:
     
     logs = resp.get("result", [])
     if not logs:
-        # Expand search
         search_start = max(0, current_block - 10000)
         resp = await run_rpc_async("eth_getLogs", [{
             "fromBlock": hex(search_start),
@@ -146,9 +143,8 @@ async def find_deploy_block(address: str, current_block: int) -> int:
         logs = resp.get("result", [])
     
     if not logs:
-        return current_block - 1000  # Fallback
+        return current_block - 1000
     
-    # Find earliest block
     min_block = current_block
     for log in logs:
         block = hex_to_int(log.get("blockNumber", "0x0"))
@@ -177,12 +173,10 @@ async def get_token_calls(address: str) -> dict:
 
 def decode_string_result(hex_data: str) -> str:
     """Decode UTF-8 string from hex result"""
-    if not hex_data or hex_data == "0x" or hex_data == "0x0000000000000000000000000000000000000000000000000000000000000020":
+    if not hex_data or hex_data == "0x":
         return ""
     try:
-        # Remove 0x prefix and the first 32 bytes (length)
         raw = hex_data[2:]
-        # Decode as UTF-8
         decoded = bytes.fromhex(raw).decode('utf-8', errors='ignore')
         return decoded.strip('\x00')
     except:
@@ -204,7 +198,6 @@ async def get_early_transfers_parallel(address: str, from_block: int, to_block: 
         }]))
         current = end + 1
     
-    # Run all chunks in parallel (limit to 5 concurrent)
     all_logs = []
     for i in range(0, len(tasks), 5):
         batch = tasks[i:i+5]
@@ -232,7 +225,6 @@ async def classify_wallets(transfers: list, token_address: str) -> list[WalletIn
         block = hex_to_int(log.get("blockNumber", "0x0"))
         tx_hash = log.get("transactionHash")
         
-        # Track sender
         if from_addr not in wallet_stats:
             wallet_stats[from_addr] = {
                 "sent": 0,
@@ -245,7 +237,6 @@ async def classify_wallets(transfers: list, token_address: str) -> list[WalletIn
         if tx_hash:
             wallet_stats[from_addr]["tx_hashes"].add(tx_hash)
         
-        # Track receiver
         if to_addr not in wallet_stats:
             wallet_stats[to_addr] = {
                 "sent": 0,
@@ -258,8 +249,7 @@ async def classify_wallets(transfers: list, token_address: str) -> list[WalletIn
         if tx_hash:
             wallet_stats[to_addr]["tx_hashes"].add(tx_hash)
     
-    # Get contract codes and ETH balances in parallel
-    addr_list = list(wallet_stats.keys())[:100]  # Limit to top 100 for speed
+    addr_list = list(wallet_stats.keys())[:100]
     
     code_tasks = {}
     balance_tasks = {}
@@ -270,7 +260,6 @@ async def classify_wallets(transfers: list, token_address: str) -> list[WalletIn
         balance_tasks[addr] = asyncio.create_task(run_rpc_async("eth_getBalance", [addr, "latest"]))
         txcount_tasks[addr] = asyncio.create_task(run_rpc_async("eth_getTransactionCount", [addr, "latest"]))
     
-    # Collect all results
     all_results = await asyncio.gather(
         *(list(code_tasks.values()) + list(balance_tasks.values()) + list(txcount_tasks.values()))
     )
@@ -285,14 +274,11 @@ async def classify_wallets(transfers: list, token_address: str) -> list[WalletIn
         wallet_stats[addr]["tx_count"] = hex_to_int(all_results[idx].get("result", "0x0"))
         idx += 1
     
-    # Build wallet list
     wallets = []
     for addr, stats in wallet_stats.items():
-        # Skip the token contract itself
         if addr.lower() == token_address.lower():
             continue
         
-        # Classify
         if stats["received"] > 0:
             if stats.get("is_contract") and stats["received"] > 1e12:
                 wtype = "pool_manager"
@@ -316,7 +302,6 @@ async def classify_wallets(transfers: list, token_address: str) -> list[WalletIn
             badge = "Active Wallet"
             amount = 0
         
-        # Get first buy block
         first_block = min(stats["blocks"]) if stats["blocks"] else None
         
         wallets.append(WalletInfo(
@@ -330,7 +315,6 @@ async def classify_wallets(transfers: list, token_address: str) -> list[WalletIn
             eth_balance=stats.get("eth_balance", 0)
         ))
     
-    # Sort by first buy block (earliest first)
     wallets.sort(key=lambda x: x.first_buy_block or 0)
     
     return wallets
@@ -344,20 +328,14 @@ async def root():
 @app.post("/scan", response_model=ScanResponse)
 async def scan(request: ContractRequest):
     """Scan a token contract for early buyers"""
-    # Validate address
     if not re.match(r'^0x[a-fA-F0-9]{40}$', request.address):
         raise HTTPException(status_code=400, detail="Invalid contract address")
     
     address = request.address.lower()
     
     try:
-        # Get current block
         current_block = await get_current_block()
-        
-        # Find deploy block (fast, ~2 RPC calls)
         deploy_block = await find_deploy_block(address, current_block)
-        
-        # Get token info in parallel
         calls = await get_token_calls(address)
         
         name_hex = calls["name_resp"].get("result", "")
@@ -370,16 +348,12 @@ async def scan(request: ContractRequest):
         decimals = hex_to_int(decimals_hex) if decimals_hex else 18
         supply = hex_to_int(supply_hex)
         
-        # Scan for transfers
         scan_start = max(deploy_block, deploy_block - 100)
         scan_end = min(deploy_block + request.block_range, current_block)
         
         transfers = await get_early_transfers_parallel(address, scan_start, scan_end)
-        
-        # Classify wallets
         wallets = await classify_wallets(transfers, address)
         
-        # Calculate stats
         buyers = [w for w in wallets if w.type == "buyer"]
         contracts = [w for w in wallets if w.type in ("contract", "pool_manager")]
         burners = [w for w in wallets if w.type == "burner"]
@@ -393,7 +367,7 @@ async def scan(request: ContractRequest):
                 deploy_block=deploy_block,
                 total_transfers=len(transfers)
             ),
-            wallets=wallets[:50],  # Top 50 only
+            wallets=wallets[:50],
             stats={
                 "total_wallets": len(wallets),
                 "real_buyers": len(buyers),
@@ -412,7 +386,6 @@ async def get_wallet(address: str):
     if not re.match(r'^0x[a-fA-F0-9]{40}$', address):
         raise HTTPException(status_code=400, detail="Invalid address")
     
-    # Run all calls in parallel
     tx_count_task = asyncio.create_task(run_rpc_async("eth_getTransactionCount", [address, "latest"]))
     eth_balance_task = asyncio.create_task(run_rpc_async("eth_getBalance", [address, "latest"]))
     code_task = asyncio.create_task(run_rpc_async("eth_getCode", [address, "latest"]))

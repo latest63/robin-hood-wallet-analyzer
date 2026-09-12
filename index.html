@@ -267,6 +267,7 @@
             font-family: monospace;
             font-size: 10px;
             color: var(--text-muted);
+            word-break: break-all;
         }
         
         /* Empty & Loading */
@@ -392,7 +393,6 @@
                 return;
             }
             
-            // Validate address format
             if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
                 showError('Invalid Ethereum address format');
                 return;
@@ -498,11 +498,11 @@
                             ` : ''}
                             <div class="detail-item">
                                 <div class="detail-label">Total TXs</div>
-                                <div class="detail-value">${w.tx_count.toLocaleString()}</div>
+                                <div class="detail-value">${w.tx_count}</div>
                             </div>
                             <div class="detail-item">
                                 <div class="detail-label">ETH Balance</div>
-                                <div class="detail-value">${w.eth_balance.toFixed(4)} ETH</div>
+                                <div class="detail-value">${w.eth_balance.toFixed(4)}</div>
                             </div>
                         </div>
                     </div>
@@ -513,8 +513,7 @@
         function filterWallets(filter) {
             currentFilter = filter;
             document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-            document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
-            
+            document.querySelector(`.chip[data-filter="${filter}"]`).classList.add('active');
             if (currentData) {
                 renderWallets(currentData.wallets);
             }
@@ -530,8 +529,7 @@
                 list.innerHTML = `
                     <div class="loading">
                         <div class="spinner"></div>
-                        <p style="color: var(--text-muted);">Querying blockchain...</p>
-                        <p style="color: var(--text-dim); font-size: 12px; margin-top: 8px;">This may take 10-30 seconds</p>
+                        <p class="empty-desc">Querying blockchain for early buyers...</p>
                     </div>
                 `;
             } else {
@@ -544,7 +542,6 @@
             const bar = document.getElementById('errorBar');
             bar.textContent = msg;
             bar.style.display = 'block';
-            setTimeout(() => hideError(), 5000);
         }
         
         function hideError() {
