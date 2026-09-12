@@ -180,7 +180,7 @@ def decode_string_result(hex_data: str) -> str:
         # Decode as UTF-8
         decoded = bytes.fromhex(raw).decode('utf-8', errors='ignore')
         # Strip null bytes and whitespace
-        cleaned = decoded.replace('\x00', '').strip()
+        cleaned = decoded.replace('\x00', '').replace('\x04', '').strip()
         return cleaned
     except:
         return ""
