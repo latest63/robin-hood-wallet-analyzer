@@ -3,13 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Robin Hood Wallet Analyzer</title>
+    <title>FnF Radar - Real-time Wallet Scanner</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         :root {
             --bg: #0a0a0f;
@@ -31,51 +27,18 @@
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
-            overflow-x: hidden;
-        }
-        
-        /* Animated background */
-        .bg-grid {
-            position: fixed;
-            inset: 0;
-            background-image: 
-                linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-            background-size: 50px 50px;
-            pointer-events: none;
-            z-index: 0;
-        }
-        
-        .bg-glow {
-            position: fixed;
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
-            top: -200px;
-            left: 50%;
-            transform: translateX(-50%);
-            pointer-events: none;
-            z-index: 0;
-            animation: pulse 4s ease-in-out infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 0.5; }
-            50% { opacity: 0.8; }
         }
         
         .container {
             max-width: 480px;
             margin: 0 auto;
             padding: 16px;
-            position: relative;
-            z-index: 1;
         }
         
         /* Header */
         .header {
             text-align: center;
-            padding: 24px 0 20px;
+            padding: 20px 0;
         }
         
         .logo {
@@ -85,7 +48,6 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            letter-spacing: -0.5px;
         }
         
         .tagline {
@@ -145,13 +107,9 @@
             box-shadow: 0 4px 20px var(--primary-glow);
         }
         
-        .btn:active {
-            transform: translateY(0);
-        }
-        
-        .btn-secondary {
-            background: var(--card);
-            border: 1px solid var(--border);
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         
         /* Stats */
@@ -182,7 +140,7 @@
             margin-top: 2px;
         }
         
-        /* Filter chips */
+        /* Filters */
         .filters {
             display: flex;
             gap: 8px;
@@ -226,14 +184,8 @@
         }
         
         @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         
         .wallet-card:hover {
@@ -283,20 +235,10 @@
             font-weight: 600;
         }
         
-        .badge-buyer {
-            background: rgba(16, 185, 129, 0.15);
-            color: var(--success);
-        }
-        
-        .badge-contract {
-            background: rgba(245, 158, 11, 0.15);
-            color: var(--warning);
-        }
-        
-        .badge-burner {
-            background: rgba(239, 68, 68, 0.15);
-            color: var(--danger);
-        }
+        .badge-buyer { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+        .badge-contract { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+        .badge-burner { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
+        .badge-pool { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
         
         .wallet-details {
             display: grid;
@@ -327,33 +269,15 @@
             color: var(--text-muted);
         }
         
-        /* Empty state */
-        .empty-state {
+        /* Empty & Loading */
+        .empty-state, .loading {
             text-align: center;
             padding: 40px 20px;
         }
         
-        .empty-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-        }
-        
-        .empty-title {
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 6px;
-        }
-        
-        .empty-desc {
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-        
-        /* Loading */
-        .loading {
-            text-align: center;
-            padding: 40px;
-        }
+        .empty-icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+        .empty-desc { font-size: 13px; color: var(--text-muted); }
         
         .spinner {
             width: 40px;
@@ -365,88 +289,66 @@
             margin: 0 auto 16px;
         }
         
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
         
-        /* Token info */
-        .token-info {
+        /* Token info banner */
+        .token-banner {
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 14px;
             padding: 14px;
             margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
+            display: none;
         }
         
-        .token-icon {
-            width: 44px;
-            height: 44px;
-            background: linear-gradient(135deg, #6366f1, #a855f7);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
+        .token-banner h3 {
+            font-size: 16px;
+            margin-bottom: 4px;
         }
         
-        .token-details h3 {
-            font-size: 15px;
-            font-weight: 600;
-        }
-        
-        .token-details p {
+        .token-banner p {
             font-size: 12px;
             color: var(--text-muted);
         }
         
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 4px;
-            height: 4px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 2px;
+        /* Error state */
+        .error-msg {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--danger);
+            border-radius: 12px;
+            padding: 12px;
+            color: var(--danger);
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div class="bg-grid"></div>
-    <div class="bg-glow"></div>
-    
     <div class="container">
         <header class="header">
             <h1 class="logo">⚡ FnF Radar</h1>
-            <p class="tagline">Robin Hood Chain Wallet Analyzer</p>
+            <p class="tagline">Robin Hood Chain • Mainnet Scanner</p>
         </header>
         
         <div class="search-box">
             <div class="input-group">
                 <input type="text" id="contractInput" placeholder="Enter token contract address..." />
-                <button class="btn" onclick="analyzeContract()">Scan</button>
+                <button class="btn" id="scanBtn" onclick="scanContract()">Scan</button>
             </div>
         </div>
         
-        <div id="tokenInfo" class="token-info" style="display: none;">
-            <div class="token-icon">🪙</div>
-            <div class="token-details">
-                <h3 id="tokenName">A Meme Coin</h3>
-                <p id="tokenSymbol">Supply: 1B • Deployed at block 53,946,846</p>
-            </div>
+        <div id="errorBar" class="error-msg"></div>
+        
+        <div id="tokenBanner" class="token-banner">
+            <h3 id="tokenName">Loading...</h3>
+            <p id="tokenDetails">Deploy block: ---</p>
         </div>
         
         <div class="stats" id="statsSection" style="display: none;">
             <div class="stat-card">
                 <div class="stat-value" id="totalWallets">0</div>
-                <div class="stat-label">Total Scanned</div>
+                <div class="stat-label">Scanned</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="realBuyers">0</div>
@@ -454,13 +356,13 @@
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="botsFiltered">0</div>
-                <div class="stat-label">Bots Filtered</div>
+                <div class="stat-label">Filtered</div>
             </div>
         </div>
         
         <div class="filters" id="filters" style="display: none;">
             <div class="chip active" data-filter="all" onclick="filterWallets('all')">All</div>
-            <div class="chip" data-filter="buyer" onclick="filterWallets('buyer')">Early Buyers</div>
+            <div class="chip" data-filter="buyer" onclick="filterWallets('buyer')">Buyers</div>
             <div class="chip" data-filter="contract" onclick="filterWallets('contract')">Contracts</div>
             <div class="chip" data-filter="burner" onclick="filterWallets('burner')">Burners</div>
         </div>
@@ -468,126 +370,76 @@
         <div class="wallet-list" id="walletList">
             <div class="empty-state">
                 <div class="empty-icon">🔍</div>
-                <h3 class="empty-title">No Wallets Yet</h3>
-                <p class="empty-desc">Enter a token contract address to scan for early buyers</p>
+                <h3 class="empty-title">Ready to Scan</h3>
+                <p class="empty-desc">Enter any token contract address on Robin Hood Chain mainnet</p>
             </div>
         </div>
     </div>
     
     <script>
-        // Sample data based on analysis
-        const sampleData = {
-            token: {
-                name: "A Meme Coin",
-                symbol: "AMC",
-                supply: "1,000,000,000",
-                decimals: 18,
-                deployBlock: 53946846
-            },
-            wallets: [
-                {
-                    address: "0x24d655a4ed48bfd4291de041a1f81a11ca456aa6",
-                    type: "buyer",
-                    badge: "Early Buyer",
-                    amount: "2.7B",
-                    block: 53976421,
-                    txHash: "0x9cef1c4cd88ab6eb06f6c3762c309a518c806e6c",
-                    txCount: 2679
-                },
-                {
-                    address: "0x92d435c96e63c43e12d6d0ab28f6b0b04072f765",
-                    type: "buyer",
-                    badge: "Early Buyer",
-                    amount: "30B",
-                    block: 53976735,
-                    txHash: "0x3bbbc7cab918c8fd8ae0f7229c03c2d4e3c069db",
-                    txCount: 1856
-                },
-                {
-                    address: "0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f",
-                    type: "buyer",
-                    badge: "Early Buyer",
-                    amount: "3.75B",
-                    block: 53976738,
-                    txHash: "0x323605918a1985b39744cb9dcba6c76b483cdb82",
-                    txCount: 3241
-                },
-                {
-                    address: "0x8366a39cc670b4001a1121b8f6a443a643e40951",
-                    type: "contract",
-                    badge: "Pool Manager",
-                    amount: "326.9M",
-                    block: 53976314,
-                    txHash: "0x48bd9ec83671bde151...",
-                    txCount: 24369
-                },
-                {
-                    address: "0x6f02324d20cc679d0e585290caa6b16bacbc0f77",
-                    type: "contract",
-                    badge: "DEX Router",
-                    amount: "—",
-                    block: 53976314,
-                    txHash: "0xa153628690e3007cef...",
-                    txCount: 1892
-                },
-                {
-                    address: "0xcc941b23420b1a402e8972b5b3fc329de9ac19df",
-                    type: "burner",
-                    badge: "Burner",
-                    amount: "0",
-                    block: null,
-                    txHash: null,
-                    txCount: 12
-                },
-                {
-                    address: "0x4d192365c30928533577a023b05663e5f48b3025",
-                    type: "burner",
-                    badge: "Burner",
-                    amount: "0",
-                    block: null,
-                    txHash: null,
-                    txCount: 8
-                }
-            ]
-        };
-        
+        const API_URL = window.location.origin;
+        let currentData = null;
         let currentFilter = 'all';
         
-        function analyzeContract() {
-            const input = document.getElementById('contractInput').value.trim();
-            if (!input) return;
+        document.getElementById('contractInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') scanContract();
+        });
+        
+        async function scanContract() {
+            const address = document.getElementById('contractInput').value.trim();
+            if (!address) {
+                showError('Please enter a contract address');
+                return;
+            }
             
-            // Show loading
-            document.getElementById('walletList').innerHTML = `
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p style="color: var(--text-muted);">Scanning blockchain...</p>
-                </div>
-            `;
+            // Validate address format
+            if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+                showError('Invalid Ethereum address format');
+                return;
+            }
             
-            // Simulate API call
-            setTimeout(() => {
-                displayResults(sampleData);
-            }, 800);
+            hideError();
+            setLoading(true);
+            
+            try {
+                const response = await fetch(`${API_URL}/scan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ address, block_range: 5000 })
+                });
+                
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || 'Scan failed');
+                }
+                
+                const data = await response.json();
+                currentData = data;
+                displayResults(data);
+                
+            } catch (err) {
+                showError(err.message || 'Failed to scan contract');
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
         }
         
         function displayResults(data) {
-            // Show token info
-            document.getElementById('tokenInfo').style.display = 'flex';
+            // Token banner
+            document.getElementById('tokenBanner').style.display = 'block';
             document.getElementById('tokenName').textContent = `${data.token.name} (${data.token.symbol})`;
-            document.getElementById('tokenSymbol').textContent = `Supply: ${data.token.supply} • Deployed at block ${data.token.deployBlock.toLocaleString()}`;
+            document.getElementById('tokenDetails').textContent = 
+                `Deployed: Block ${data.token.deploy_block.toLocaleString()} • Supply: ${data.token.supply.toLocaleString()} • Transfers: ${data.token.total_transfers}`;
             
-            // Update stats
-            const buyers = data.wallets.filter(w => w.type === 'buyer').length;
-            const contracts = data.wallets.filter(w => w.type === 'contract').length;
-            const burners = data.wallets.filter(w => w.type === 'burner').length;
-            
-            document.getElementById('totalWallets').textContent = data.wallets.length;
-            document.getElementById('realBuyers').textContent = buyers;
-            document.getElementById('botsFiltered').textContent = contracts + burners;
+            // Stats
+            document.getElementById('totalWallets').textContent = data.stats.total_wallets;
+            document.getElementById('realBuyers').textContent = data.stats.real_buyers;
+            document.getElementById('botsFiltered').textContent = data.stats.contracts_filtered + data.stats.burners_filtered;
             document.getElementById('statsSection').style.display = 'grid';
             document.getElementById('filters').style.display = 'flex';
             
+            // Wallet list
             renderWallets(data.wallets);
         }
         
@@ -609,40 +461,53 @@
                 return;
             }
             
-            list.innerHTML = filtered.map((w, i) => `
-                <div class="wallet-card" style="animation-delay: ${i * 0.05}s">
-                    <div class="wallet-header">
-                        <div class="wallet-info">
-                            <div class="wallet-avatar">${w.type === 'buyer' ? '💎' : w.type === 'contract' ? '📦' : '🔥'}</div>
-                            <div>
-                                <div class="wallet-name">${w.badge}</div>
-                                <div class="wallet-address">${w.address}</div>
+            list.innerHTML = filtered.map((w, i) => {
+                const icon = w.type === 'buyer' ? '💎' : 
+                            w.type === 'contract' ? '📦' : 
+                            w.type === 'burner' ? '🔥' : '⚙️';
+                const badgeClass = w.type === 'buyer' ? 'badge-buyer' : 
+                                  w.type === 'burner' ? 'badge-burner' : 
+                                  w.type === 'pool_manager' ? 'badge-pool' : 'badge-contract';
+                
+                return `
+                    <div class="wallet-card" style="animation-delay: ${i * 0.05}s">
+                        <div class="wallet-header">
+                            <div class="wallet-info">
+                                <div class="wallet-avatar">${icon}</div>
+                                <div>
+                                    <div class="wallet-name">${w.badge}</div>
+                                    <div class="wallet-address">${w.address}</div>
+                                </div>
+                            </div>
+                            <span class="wallet-badge ${badgeClass}">${w.badge}</span>
+                        </div>
+                        <div class="wallet-details">
+                            <div class="detail-item">
+                                <div class="detail-label">Amount Received</div>
+                                <div class="detail-value">${w.amount}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">First Seen</div>
+                                <div class="detail-value">${w.first_buy_block ? '#' + w.first_buy_block.toLocaleString() : '—'}</div>
+                            </div>
+                            ${w.tx_hash ? `
+                            <div class="detail-item" style="grid-column: 1 / -1">
+                                <div class="detail-label">First TX Hash</div>
+                                <div class="tx-hash">${w.tx_hash}</div>
+                            </div>
+                            ` : ''}
+                            <div class="detail-item">
+                                <div class="detail-label">Total TXs</div>
+                                <div class="detail-value">${w.tx_count.toLocaleString()}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">ETH Balance</div>
+                                <div class="detail-value">${w.eth_balance.toFixed(4)} ETH</div>
                             </div>
                         </div>
-                        <span class="wallet-badge badge-${w.type}">${w.badge}</span>
                     </div>
-                    <div class="wallet-details">
-                        <div class="detail-item">
-                            <div class="detail-label">Amount</div>
-                            <div class="detail-value">${w.amount}</div>
-                        </div>
-                        <div class="detail-item">
-                            <div class="detail-label">First Buy Block</div>
-                            <div class="detail-value">${w.block ? w.block.toLocaleString() : '—'}</div>
-                        </div>
-                        ${w.txHash ? `
-                        <div class="detail-item" style="grid-column: 1 / -1">
-                            <div class="detail-label">TX Hash</div>
-                            <div class="tx-hash">${w.txHash}</div>
-                        </div>
-                        ` : ''}
-                        <div class="detail-item">
-                            <div class="detail-label">Total TXs</div>
-                            <div class="detail-value">${w.txCount.toLocaleString()}</div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
         
         function filterWallets(filter) {
@@ -650,16 +515,41 @@
             document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
             document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
             
-            const list = document.getElementById('walletList');
-            if (list.children.length > 0 && !list.querySelector('.loading')) {
-                renderWallets(sampleData.wallets);
+            if (currentData) {
+                renderWallets(currentData.wallets);
             }
         }
         
-        // Enter key support
-        document.getElementById('contractInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') analyzeContract();
-        });
+        function setLoading(loading) {
+            const btn = document.getElementById('scanBtn');
+            const list = document.getElementById('walletList');
+            
+            if (loading) {
+                btn.disabled = true;
+                btn.textContent = 'Scanning...';
+                list.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p style="color: var(--text-muted);">Querying blockchain...</p>
+                        <p style="color: var(--text-dim); font-size: 12px; margin-top: 8px;">This may take 10-30 seconds</p>
+                    </div>
+                `;
+            } else {
+                btn.disabled = false;
+                btn.textContent = 'Scan';
+            }
+        }
+        
+        function showError(msg) {
+            const bar = document.getElementById('errorBar');
+            bar.textContent = msg;
+            bar.style.display = 'block';
+            setTimeout(() => hideError(), 5000);
+        }
+        
+        function hideError() {
+            document.getElementById('errorBar').style.display = 'none';
+        }
     </script>
 </body>
 </html>
