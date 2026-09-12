@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robin Hood Wallet Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --card: #1a1a2e;
+            --border: #2a2a3e;
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.3);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        /* Animated background */
+        .bg-grid {
+            position: fixed;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .bg-glow {
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
+            top: -200px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            z-index: 0;
+            animation: pulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 0.8; }
+        }
+        
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 16px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 24px 0 20px;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+        
+        .tagline {
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-top: 4px;
+        }
+        
+        /* Search */
+        .search-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .input-group input {
+            flex: 1;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        
+        .input-group input:focus {
+            border-color: var(--primary);
+        }
+        
+        .input-group input::placeholder {
+            color: var(--text-dim);
+        }
+        
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px var(--primary-glow);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-secondary {
+            background: var(--card);
+            border: 1px solid var(--border);
+        }
+        
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px 12px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        
+        /* Filter chips */
+        .filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+        
+        .chip {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 12px;
+            color: var(--text-muted);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        
+        .chip.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+        
+        /* Wallet cards */
+        .wallet-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .wallet-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 14px;
+            transition: all 0.2s;
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .wallet-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        .wallet-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .wallet-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .wallet-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        .wallet-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .wallet-address {
+            font-size: 11px;
+            color: var(--text-dim);
+            font-family: monospace;
+        }
+        
+        .wallet-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        
+        .badge-buyer {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+        }
+        
+        .badge-contract {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+        }
+        
+        .badge-burner {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+        }
+        
+        .wallet-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .detail-item {
+            background: var(--card);
+            border-radius: 10px;
+            padding: 10px;
+        }
+        
+        .detail-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-bottom: 2px;
+        }
+        
+        .detail-value {
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .tx-hash {
+            font-family: monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+        
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .empty-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        
+        .empty-desc {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Token info */
+        .token-info {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .token-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, #6366f1, #a855f7);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        
+        .token-details h3 {
+            font-size: 15px;
+            font-weight: 600;
+        }
+        
+        .token-details p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+    <div class="bg-glow"></div>
+    
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">⚡ FnF Radar</h1>
+            <p class="tagline">Robin Hood Chain Wallet Analyzer</p>
+        </header>
+        
+        <div class="search-box">
+            <div class="input-group">
+                <input type="text" id="contractInput" placeholder="Enter token contract address..." />
+                <button class="btn" onclick="analyzeContract()">Scan</button>
+            </div>
+        </div>
+        
+        <div id="tokenInfo" class="token-info" style="display: none;">
+            <div class="token-icon">🪙</div>
+            <div class="token-details">
+                <h3 id="tokenName">A Meme Coin</h3>
+                <p id="tokenSymbol">Supply: 1B • Deployed at block 53,946,846</p>
+            </div>
+        </div>
+        
+        <div class="stats" id="statsSection" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-value" id="totalWallets">0</div>
+                <div class="stat-label">Total Scanned</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="realBuyers">0</div>
+                <div class="stat-label">Real Buyers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="botsFiltered">0</div>
+                <div class="stat-label">Bots Filtered</div>
+            </div>
+        </div>
+        
+        <div class="filters" id="filters" style="display: none;">
+            <div class="chip active" data-filter="all" onclick="filterWallets('all')">All</div>
+            <div class="chip" data-filter="buyer" onclick="filterWallets('buyer')">Early Buyers</div>
+            <div class="chip" data-filter="contract" onclick="filterWallets('contract')">Contracts</div>
+            <div class="chip" data-filter="burner" onclick="filterWallets('burner')">Burners</div>
+        </div>
+        
+        <div class="wallet-list" id="walletList">
+            <div class="empty-state">
+                <div class="empty-icon">🔍</div>
+                <h3 class="empty-title">No Wallets Yet</h3>
+                <p class="empty-desc">Enter a token contract address to scan for early buyers</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Sample data based on analysis
+        const sampleData = {
+            token: {
+                name: "A Meme Coin",
+                symbol: "AMC",
+                supply: "1,000,000,000",
+                decimals: 18,
+                deployBlock: 53946846
+            },
+            wallets: [
+                {
+                    address: "0x24d655a4ed48bfd4291de041a1f81a11ca456aa6",
+                    type: "buyer",
+                    badge: "Early Buyer",
+                    amount: "2.7B",
+                    block: 53976421,
+                    txHash: "0x9cef1c4cd88ab6eb06f6c3762c309a518c806e6c",
+                    txCount: 2679
+                },
+                {
+                    address: "0x92d435c96e63c43e12d6d0ab28f6b0b04072f765",
+                    type: "buyer",
+                    badge: "Early Buyer",
+                    amount: "30B",
+                    block: 53976735,
+                    txHash: "0x3bbbc7cab918c8fd8ae0f7229c03c2d4e3c069db",
+                    txCount: 1856
+                },
+                {
+                    address: "0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f",
+                    type: "buyer",
+                    badge: "Early Buyer",
+                    amount: "3.75B",
+                    block: 53976738,
+                    txHash: "0x323605918a1985b39744cb9dcba6c76b483cdb82",
+                    txCount: 3241
+                },
+                {
+                    address: "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+                    type: "contract",
+                    badge: "Pool Manager",
+                    amount: "326.9M",
+                    block: 53976314,
+                    txHash: "0x48bd9ec83671bde151...",
+                    txCount: 24369
+                },
+                {
+                    address: "0x6f02324d20cc679d0e585290caa6b16bacbc0f77",
+                    type: "contract",
+                    badge: "DEX Router",
+                    amount: "—",
+                    block: 53976314,
+                    txHash: "0xa153628690e3007cef...",
+                    txCount: 1892
+                },
+                {
+                    address: "0xcc941b23420b1a402e8972b5b3fc329de9ac19df",
+                    type: "burner",
+                    badge: "Burner",
+                    amount: "0",
+                    block: null,
+                    txHash: null,
+                    txCount: 12
+                },
+                {
+                    address: "0x4d192365c30928533577a023b05663e5f48b3025",
+                    type: "burner",
+                    badge: "Burner",
+                    amount: "0",
+                    block: null,
+                    txHash: null,
+                    txCount: 8
+                }
+            ]
+        };
+        
+        let currentFilter = 'all';
+        
+        function analyzeContract() {
+            const input = document.getElementById('contractInput').value.trim();
+            if (!input) return;
+            
+            // Show loading
+            document.getElementById('walletList').innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p style="color: var(--text-muted);">Scanning blockchain...</p>
+                </div>
+            `;
+            
+            // Simulate API call
+            setTimeout(() => {
+                displayResults(sampleData);
+            }, 800);
+        }
+        
+        function displayResults(data) {
+            // Show token info
+            document.getElementById('tokenInfo').style.display = 'flex';
+            document.getElementById('tokenName').textContent = `${data.token.name} (${data.token.symbol})`;
+            document.getElementById('tokenSymbol').textContent = `Supply: ${data.token.supply} • Deployed at block ${data.token.deployBlock.toLocaleString()}`;
+            
+            // Update stats
+            const buyers = data.wallets.filter(w => w.type === 'buyer').length;
+            const contracts = data.wallets.filter(w => w.type === 'contract').length;
+            const burners = data.wallets.filter(w => w.type === 'burner').length;
+            
+            document.getElementById('totalWallets').textContent = data.wallets.length;
+            document.getElementById('realBuyers').textContent = buyers;
+            document.getElementById('botsFiltered').textContent = contracts + burners;
+            document.getElementById('statsSection').style.display = 'grid';
+            document.getElementById('filters').style.display = 'flex';
+            
+            renderWallets(data.wallets);
+        }
+        
+        function renderWallets(wallets) {
+            const filtered = currentFilter === 'all' 
+                ? wallets 
+                : wallets.filter(w => w.type === currentFilter);
+            
+            const list = document.getElementById('walletList');
+            
+            if (filtered.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">🎯</div>
+                        <h3 class="empty-title">No Results</h3>
+                        <p class="empty-desc">No wallets match this filter</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            list.innerHTML = filtered.map((w, i) => `
+                <div class="wallet-card" style="animation-delay: ${i * 0.05}s">
+                    <div class="wallet-header">
+                        <div class="wallet-info">
+                            <div class="wallet-avatar">${w.type === 'buyer' ? '💎' : w.type === 'contract' ? '📦' : '🔥'}</div>
+                            <div>
+                                <div class="wallet-name">${w.badge}</div>
+                                <div class="wallet-address">${w.address}</div>
+                            </div>
+                        </div>
+                        <span class="wallet-badge badge-${w.type}">${w.badge}</span>
+                    </div>
+                    <div class="wallet-details">
+                        <div class="detail-item">
+                            <div class="detail-label">Amount</div>
+                            <div class="detail-value">${w.amount}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">First Buy Block</div>
+                            <div class="detail-value">${w.block ? w.block.toLocaleString() : '—'}</div>
+                        </div>
+                        ${w.txHash ? `
+                        <div class="detail-item" style="grid-column: 1 / -1">
+                            <div class="detail-label">TX Hash</div>
+                            <div class="tx-hash">${w.txHash}</div>
+                        </div>
+                        ` : ''}
+                        <div class="detail-item">
+                            <div class="detail-label">Total TXs</div>
+                            <div class="detail-value">${w.txCount.toLocaleString()}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function filterWallets(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+            document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
+            
+            const list = document.getElementById('walletList');
+            if (list.children.length > 0 && !list.querySelector('.loading')) {
+                renderWallets(sampleData.wallets);
+            }
+        }
+        
+        // Enter key support
+        document.getElementById('contractInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') analyzeContract();
+        });
+    </script>
+</body>
+</html>
