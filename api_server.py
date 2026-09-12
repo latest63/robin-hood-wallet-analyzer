@@ -179,11 +179,11 @@ def decode_string_result(hex_data: str) -> str:
         raw = hex_data[2:]
         # Decode as UTF-8
         decoded = bytes.fromhex(raw).decode('utf-8', errors='ignore')
-        # Strip null bytes and whitespace
-        cleaned = decoded.replace('\x00', '').replace('\x04', '').strip()
-        return cleaned
+        # Strip all non-printable characters
+        cleaned = ''.join(c for c in decoded if c.isprintable() or c.isspace()).strip()
+        return cleaned or "Unknown"
     except:
-        return ""
+        return "Unknown"
 
 
 def decode_uint256(hex_data: str) -> int:
