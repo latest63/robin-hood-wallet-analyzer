@@ -183,6 +183,23 @@ def decode_string_result(hex_data: str) -> str:
         return ""
 
 
+def decode_uint256(hex_data: str) -> int:
+    """Decode uint256 from hex result (handles both full and compact forms)"""
+    if not hex_data or hex_data == "0x" or hex_data == "0x0":
+        return 0
+    try:
+        raw = hex_data[2:]
+        # Handle compact form (right-padded with zeros)
+        # Standard: last 32 bytes is the value
+        if len(raw) <= 64:
+            return int(raw, 16)
+        else:
+            # Take last 64 chars (32 bytes) for standard uint256
+            return int(raw[-64:], 16)
+    except:
+        return 0
+
+
 async def get_early_transfers_parallel(address: str, from_block: int, to_block: int, chunk_size: int = 5000) -> list:
     """Get transfer events in block range - parallel chunks"""
     tasks = []
@@ -346,7 +363,7 @@ async def scan(request: ContractRequest):
         name = decode_string_result(name_hex) or "Unknown Token"
         symbol = decode_string_result(symbol_hex) or "TKN"
         decimals = hex_to_int(decimals_hex) if decimals_hex else 18
-        supply = hex_to_int(supply_hex)
+        supply = decode_uint256(supply_hex)
         
         scan_start = max(deploy_block, deploy_block - 100)
         scan_end = min(deploy_block + request.block_range, current_block)
