@@ -1,0 +1,67 @@
+{
+  "token": "0xa58b60e1c11f5669a36c9a65c27b38b2002be7d4",
+  "token_name": "hoodship (HOODSHIP)",
+  "created_at": "2026-09-15T07:28:35.261812",
+  "wallets": {
+    "0xf7e4337b51bed68bb211813b1f0369f1193954c0": {
+      "first_seen_block": 63192120,
+      "first_tx": "0xccfe56e7ff270ab9b0e13d5fe9c4c99cf55f3a42451486e9c3883fd618a067b4",
+      "swap_count": 5,
+      "total_value_eth": 0.1083022441883165,
+      "nonce": 24,
+      "eth_balance": 3.02099403e-06,
+      "score": 74.000302099403,
+      "last_alert_block": 0
+    },
+    "0x6766eb680c9c985077cb4a69f6344a89dd119a6e": {
+      "first_seen_block": 63192216,
+      "first_tx": "0x7204c9cb28e2656b5f48887ad9550a660d8192ff552c2d7180e491d92879802c",
+      "swap_count": 3,
+      "total_value_eth": 0.03947467570418518,
+      "nonce": 31,
+      "eth_balance": 3.00020403e-06,
+      "score": 61.000300020403,
+      "last_alert_block": 0
+    },
+    "0x6d160c524f0fda4d82b44ec39fea26ffa85d9dd8": {
+      "first_seen_block": 63192074,
+      "first_tx": "0x98a5588bf1c72ef99a47a55b6d358c319499954e3cc9ec7600febc76931802d5",
+      "swap_count": 3,
+      "total_value_eth": 0.047051224718911606,
+      "nonce": 27,
+      "eth_balance": 3.00020403e-06,
+      "score": 57.000300020403,
+      "last_alert_block": 0
+    },
+    "0x0fd1a67fbeaeb9781b8269c7b6de950b6b923ca2": {
+      "first_seen_block": 63192242,
+      "first_tx": "0xa18257c2b8c0e27ee6a1eefbb3cc80e475c51d9b3de900926eb56f689dc132dc",
+      "swap_count": 3,
+      "total_value_eth": 0.0793595810133601,
+      "nonce": 27,
+      "eth_balance": 3.00020403e-06,
+      "score": 57.000300020403,
+      "last_alert_block": 0
+    },
+    "0x04bdbdb0f2b84022e20d9d1cf4da6508b5d60f30": {
+      "first_seen_block": 63192148,
+      "first_tx": "0x7d3feba99dcee670c4b315b37b093aa724f46c046b0d6dd21929c65234933726",
+      "swap_count": 3,
+      "total_value_eth": 0.05857976850447653,
+      "nonce": 21,
+      "eth_balance": 3.00020403e-06,
+      "score": 51.000300020403,
+      "last_alert_block": 0
+    },
+    "0x8541b7c4acb14fd530d6e1ffdae5de7f730c6d28": {
+      "first_seen_block": 63192111,
+      "first_tx": "0x7078ea4ebe7eeeee5dcbf46bb03476eaf3b7f206c48015d6920217450301a870",
+      "swap_count": 3,
+      "total_value_eth": 0.030367953783559994,
+      "nonce": 16,
+      "eth_balance": 2.96110203e-06,
+      "score": 46.000296110202996,
+      "last_alert_block": 0
+    }
+  }
+}
