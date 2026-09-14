@@ -52,7 +52,6 @@
         .wallet-badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }
         .badge-buyer { background: rgba(16, 185, 129, 0.15); color: var(--success); }
         .badge-contract { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
-        .badge-eoa { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
         .wallet-details { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .detail-item { background: var(--card); border-radius: 10px; padding: 10px; }
         .detail-label { font-size: 10px; color: var(--text-dim); margin-bottom: 2px; }
@@ -112,7 +111,13 @@
     <script>
         const RPC_URL = 'https://rpc.mainnet.chain.robinhood.com';
         const DEXSCREENER_API = 'https://api.dexscreener.com';
-        const SWAP_TOPIC_V3 = '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67';
+        
+        // v3 pair events
+        const V3_SWAP_TOPIC = '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67';
+        
+        // v4 PoolManager
+        const V4_POOL_MANAGER = '0x8366a39cc670b4001a1121b8f6a443a643e40951';
+        const V4_SWAP_TOPIC = '0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f';
         
         async function rpcCall(method, params) {
             const resp = await fetch(RPC_URL, {
@@ -151,11 +156,13 @@
                     return;
                 }
                 
-                // Find the best v3 pair (has actual contract address, not bytes32)
+                // Find best pair (prefer v3, fallback to v4)
                 const v3Pair = dexData.pairs.find(p => p.labels && p.labels.includes('v3'));
-                const bestPair = v3Pair || dexData.pairs[0];
+                const v4Pair = dexData.pairs.find(p => p.labels && p.labels.includes('v4'));
+                const bestPair = v3Pair || v4Pair || dexData.pairs[0];
                 const pairAddress = bestPair.pairAddress;
                 const isV3 = bestPair.labels && bestPair.labels.includes('v3');
+                const isV4 = bestPair.labels && bestPair.labels.includes('v4');
                 
                 // Show token info
                 const tokenInfo = bestPair.baseToken;
@@ -169,36 +176,56 @@
                     <span>📈 24h: ${bestPair.txns?.h24?.buys || 0} buys / ${bestPair.txns?.h24?.sells || 0} sells</span>
                 `;
                 
-                if (!isV3) {
-                    showError('Only v3 pairs supported for on-chain scanning. v4 pairs need a different approach.');
+                let swapLogs = [];
+                let scanType = '';
+                
+                if (isV3) {
+                    // v3 approach: query pair contract directly
+                    scanType = 'v3';
+                    showProgress('Checking v3 pair contract...');
+                    const pairCode = await rpcCall('eth_getCode', [pairAddress, 'latest']);
+                    if (!pairCode || pairCode === '0x' || pairCode.length <= 4) {
+                        showError('v3 pair contract not found on-chain');
+                        return;
+                    }
+                    
+                    showProgress('Fetching v3 swap events...');
+                    swapLogs = await rpcCall('eth_getLogs', [{
+                        fromBlock: '0x1',
+                        toBlock: 'latest',
+                        address: pairAddress,
+                        topics: [V3_SWAP_TOPIC]
+                    }]);
+                    
+                } else if (isV4) {
+                    // v4 approach: query PoolManager with pool ID
+                    scanType = 'v4';
+                    showProgress('Fetching v4 swap events from PoolManager...');
+                    
+                    // Get current block for recent range
+                    const currentBlock = parseInt(await rpcCall('eth_blockNumber', []), 16);
+                    const fromBlock = Math.max(0, currentBlock - 5000);
+                    
+                    swapLogs = await rpcCall('eth_getLogs', [{
+                        fromBlock: '0x' + fromBlock.toString(16),
+                        toBlock: 'latest',
+                        address: V4_POOL_MANAGER,
+                        topics: [null, pairAddress] // pool ID in topics[1]
+                    }]);
+                    
+                } else {
+                    showError('Unknown pair type - only v3 and v4 Uniswap pairs supported');
                     return;
                 }
-                
-                // Step 2: Check if pair contract exists
-                showProgress('Checking pair contract...');
-                const pairCode = await rpcCall('eth_getCode', [pairAddress, 'latest']);
-                if (!pairCode || pairCode === '0x' || pairCode.length <= 4) {
-                    showError('Pair contract not found on-chain');
-                    return;
-                }
-                
-                // Step 3: Get Swap events from the pair
-                showProgress('Fetching swap events (this may take a moment)...');
-                const swapLogs = await rpcCall('eth_getLogs', [{
-                    fromBlock: '0x1',
-                    toBlock: 'latest',
-                    address: pairAddress,
-                    topics: [SWAP_TOPIC_V3]
-                }]);
                 
                 if (!swapLogs || swapLogs.length === 0) {
-                    showError('No swap events found for this pair');
+                    showError(`No swap events found (${scanType} pair)`);
                     return;
                 }
                 
-                showProgress(`Found ${swapLogs.length} swaps. Tracing buyers...`);
+                showProgress(`Found ${swapLogs.length} swaps (${scanType}). Tracing buyers...`);
                 
-                // Step 4: Get unique TX hashes and trace to find real buyers
+                // Get unique TX hashes
                 const seenTxs = new Set();
                 const txHashes = [];
                 for (const log of swapLogs) {
@@ -209,13 +236,12 @@
                     }
                 }
                 
-                // Step 5: Get TX "from" for each unique swap (first 100 unique TXs)
+                // Trace TXs to find real buyers (limit to 100)
                 const walletMap = new Map();
-                const txsToCheck = txHashes.slice(0, 100);
+                const toCheck = txHashes.slice(0, 100);
                 
-                // Batch fetch TX details
-                for (let i = 0; i < Math.min(txHashes.length, 100); i++) {
-                    const { tx, block } = txHashes[i];
+                for (let i = 0; i < toCheck.length; i++) {
+                    const { tx, block } = toCheck[i];
                     try {
                         const txData = await rpcCall('eth_getTransactionByHash', [tx]);
                         if (txData && txData.from) {
@@ -226,45 +252,39 @@
                                 walletMap.get(from).count++;
                             }
                         }
-                    } catch (e) {
-                        // Skip failed TX lookups
-                    }
+                    } catch (e) { /* skip */ }
                     if (i % 10 === 0) {
-                        showProgress(`Tracing buyers... ${i}/${Math.min(txHashes.length, 100)}`);
+                        showProgress(`Tracing buyers... ${i}/${toCheck.length}`);
                     }
                 }
                 
                 showProgress(`Found ${walletMap.size} unique wallets. Checking types...`);
                 
-                // Step 6: Check if each wallet is EOA or contract
+                // Check if each wallet is EOA or contract
                 const wallets = [];
                 let checked = 0;
-                for (const [addr, data] of walletMap) {
+                for (const [wAddr, data] of walletMap) {
                     try {
-                        const code = await rpcCall('eth_getCode', [addr, 'latest']);
+                        const code = await rpcCall('eth_getCode', [wAddr, 'latest']);
                         const isContract = code && code !== '0x' && code.length > 4;
                         
                         wallets.push({
-                            address: addr,
+                            address: wAddr,
                             type: isContract ? 'contract' : 'buyer',
                             badge: isContract ? 'Contract' : 'Early Buyer',
                             first_block: data.firstBlock,
                             tx_hash: data.txHash,
                             swap_count: data.count
                         });
-                    } catch (e) {
-                        // Skip failed lookups
-                    }
+                    } catch (e) { /* skip */ }
                     checked++;
                     if (checked % 5 === 0) {
                         showProgress(`Checking wallet types... ${checked}/${walletMap.size}`);
                     }
                 }
                 
-                // Sort by first block
                 wallets.sort((a, b) => a.first_block - b.first_block);
                 
-                // Show results
                 const buyers = wallets.filter(w => w.type === 'buyer');
                 const contracts = wallets.filter(w => w.type === 'contract');
                 
