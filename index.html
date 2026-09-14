@@ -30,75 +30,38 @@
         .header { text-align: center; padding: 20px 0; }
         .logo { font-size: 24px; font-weight: 800; background: linear-gradient(135deg, var(--primary), #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .tagline { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
-        .search-box {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
+        .search-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
         .input-group { display: flex; gap: 8px; }
-        .input-group input {
-            flex: 1;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 12px 16px;
-            color: var(--text);
-            font-size: 14px;
-            outline: none;
-        }
-        .btn {
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            padding: 12px 20px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-        }
+        .input-group input { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; color: var(--text); font-size: 14px; outline: none; }
+        .btn { background: var(--primary); color: white; border: none; border-radius: 12px; padding: 12px 20px; font-size: 14px; font-weight: 600; cursor: pointer; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-        .stat-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 14px 12px;
-            text-align: center;
-        }
+        .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 12px; text-align: center; }
         .stat-value { font-size: 20px; font-weight: 700; color: var(--primary); }
         .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .token-banner { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 16px; display: none; }
+        .token-banner h3 { font-size: 16px; margin-bottom: 4px; }
+        .token-banner p { font-size: 12px; color: var(--text-muted); }
+        .token-banner .meta { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+        .token-banner .meta span { font-size: 11px; color: var(--text-dim); background: var(--card); padding: 4px 8px; border-radius: 6px; }
         .wallet-list { display: flex; flex-direction: column; gap: 10px; }
-        .wallet-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 14px;
-        }
+        .wallet-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; }
         .wallet-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
         .wallet-name { font-weight: 600; font-size: 14px; }
         .wallet-address { font-size: 11px; color: var(--text-dim); font-family: monospace; }
         .wallet-badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; }
         .badge-buyer { background: rgba(16, 185, 129, 0.15); color: var(--success); }
         .badge-contract { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
-        .badge-burner { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
-        .badge-pool { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
+        .badge-eoa { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
         .wallet-details { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .detail-item { background: var(--card); border-radius: 10px; padding: 10px; }
         .detail-label { font-size: 10px; color: var(--text-dim); margin-bottom: 2px; }
         .detail-value { font-size: 13px; font-weight: 600; }
-        .spinner {
-            width: 40px; height: 40px;
-            border: 3px solid var(--border);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 40px auto;
-        }
+        .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 40px auto; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
         .error-msg { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); border-radius: 12px; padding: 12px; color: var(--danger); font-size: 13px; margin-bottom: 16px; display: none; }
+        .progress { font-size: 12px; color: var(--text-muted); text-align: center; padding: 8px; }
     </style>
 </head>
 <body>
@@ -116,19 +79,26 @@
         </div>
         
         <div id="errorBar" class="error-msg"></div>
+        <div id="progress" class="progress" style="display:none;"></div>
+        
+        <div id="tokenBanner" class="token-banner">
+            <h3 id="tokenName"></h3>
+            <p id="tokenDetails"></p>
+            <div id="tokenMeta" class="meta"></div>
+        </div>
         
         <div class="stats" id="statsSection" style="display: none;">
             <div class="stat-card">
                 <div class="stat-value" id="totalWallets">0</div>
-                <div class="stat-label">Scanned</div>
+                <div class="stat-label">Swappers</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="realBuyers">0</div>
-                <div class="stat-label">Real Buyers</div>
+                <div class="stat-label">Real EOAs</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="botsFiltered">0</div>
-                <div class="stat-label">Filtered</div>
+                <div class="stat-value" id="contractsFiltered">0</div>
+                <div class="stat-label">Contracts</div>
             </div>
         </div>
         
@@ -141,7 +111,8 @@
     
     <script>
         const RPC_URL = 'https://rpc.mainnet.chain.robinhood.com';
-        const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+        const DEXSCREENER_API = 'https://api.dexscreener.com';
+        const SWAP_TOPIC_V3 = '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67';
         
         async function rpcCall(method, params) {
             const resp = await fetch(RPC_URL, {
@@ -150,28 +121,13 @@
                 body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
             });
             const data = await resp.json();
+            if (data.error) throw new Error(data.error.message || 'RPC error');
             return data.result;
         }
         
-        function hexToHex(hex) {
-            if (!hex || hex === '0x' || hex === '0x0') return '';
-            return hex.slice(2);
-        }
-        
-        function hexToInt(hex) {
-            if (!hex || hex === '0x' || hex === '0x0') return 0;
-            try {
-                const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
-                return parseInt(clean, 16) || 0;
-            } catch { return 0; }
-        }
-        
-        function formatAmount(value, decimals) {
-            if (value === 0) return '0';
-            const formatted = value / Math.pow(10, decimals || 18);
-            if (formatted >= 1000000) return (formatted / 1000000).toFixed(1) + 'M';
-            if (formatted >= 1000) return (formatted / 1000).toFixed(1) + 'K';
-            return formatted.toFixed(2);
+        function showProgress(msg) {
+            document.getElementById('progress').style.display = 'block';
+            document.getElementById('progress').textContent = msg;
         }
         
         async function scanContract() {
@@ -183,166 +139,149 @@
             setLoading(true);
             
             try {
-                console.log('Scanning address:', address);
                 const addr = address.toLowerCase();
                 
-                // Get current block first
-                const blockResp = await fetch(RPC_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_blockNumber', params: [], id: 1 })
-                }).then(r => r.json());
+                // Step 1: Get pairs from DexScreener
+                showProgress('Finding trading pairs...');
+                const dexResp = await fetch(`${DEXSCREENER_API}/latest/dex/tokens/${addr}`);
+                const dexData = await dexResp.json();
                 
-                if (blockResp.error) {
-                    throw new Error(blockResp.error.message || 'RPC error');
-                }
-                
-                const currentBlock = parseInt(blockResp.result, 16);
-                const deployBlock = Math.max(0, currentBlock - 5000);
-                console.log('Current block:', currentBlock, 'Deploy block range:', deployBlock);
-                
-                // Get token info and logs in parallel
-                const [nameResp, symbolResp, decimalsResp, supplyResp, logsResp] = await Promise.all([
-                    fetch(RPC_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: addr, data: '0x06fdde03' }, 'latest'], id: 1 })
-                    }).then(r => r.json()),
-                    fetch(RPC_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: addr, data: '0x95d89b41' }, 'latest'], id: 1 })
-                    }).then(r => r.json()),
-                    fetch(RPC_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: addr, data: '0x313ce567' }, 'latest'], id: 1 })
-                    }).then(r => r.json()),
-                    fetch(RPC_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to: addr, data: '0x18160ddd' }, 'latest'], id: 1 })
-                    }).then(r => r.json()),
-                    fetch(RPC_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            jsonrpc: '2.0',
-                            method: 'eth_getLogs',
-                            params: [{
-                                fromBlock: '0x' + deployBlock.toString(16),
-                                toBlock: '0x' + currentBlock.toString(16),
-                                address: addr,
-                                topics: [TRANSFER_TOPIC]
-                            }],
-                            id: 1
-                        })
-                    }).then(r => r.json())
-                ]);
-                
-                console.log('Logs response:', logsResp);
-                
-                if (logsResp.error) {
-                    throw new Error(logsResp.error.message || 'RPC error in logs');
-                }
-                
-                const logs = logsResp.result || [];
-                console.log('Got', logs.length, 'transfers');
-                
-                if (!Array.isArray(logs) || logs.length === 0) {
-                    showError('No transfer data found in block range');
-                    setLoading(false);
+                if (!dexData.pairs || dexData.pairs.length === 0) {
+                    showError('No trading pairs found for this token');
                     return;
                 }
                 
-                const name = nameResp.result || '';
-                const symbol = symbolResp.result || '';
-                const decimalsHex = decimalsResp.result || '0x12';
-                const supplyHex = supplyResp.result || '0x0';
+                // Find the best v3 pair (has actual contract address, not bytes32)
+                const v3Pair = dexData.pairs.find(p => p.labels && p.labels.includes('v3'));
+                const bestPair = v3Pair || dexData.pairs[0];
+                const pairAddress = bestPair.pairAddress;
+                const isV3 = bestPair.labels && bestPair.labels.includes('v3');
                 
-                const deployBlockNum = currentBlock - 2000;
+                // Show token info
+                const tokenInfo = bestPair.baseToken;
+                document.getElementById('tokenBanner').style.display = 'block';
+                document.getElementById('tokenName').textContent = `${tokenInfo.name} (${tokenInfo.symbol})`;
+                document.getElementById('tokenDetails').textContent = `Pair: ${pairAddress.slice(0,10)}... • DEX: ${bestPair.dexId} ${bestPair.labels ? bestPair.labels.join(' ') : ''}`;
+                document.getElementById('tokenMeta').innerHTML = `
+                    <span>💰 $${bestPair.priceUsd}</span>
+                    <span>📊 MC: $${(bestPair.marketCap || bestPair.fdv || 0).toLocaleString()}</span>
+                    <span>💧 Liq: $${(bestPair.liquidity?.usd || 0).toLocaleString()}</span>
+                    <span>📈 24h: ${bestPair.txns?.h24?.buys || 0} buys / ${bestPair.txns?.h24?.sells || 0} sells</span>
+                `;
+                
+                if (!isV3) {
+                    showError('Only v3 pairs supported for on-chain scanning. v4 pairs need a different approach.');
+                    return;
+                }
+                
+                // Step 2: Check if pair contract exists
+                showProgress('Checking pair contract...');
+                const pairCode = await rpcCall('eth_getCode', [pairAddress, 'latest']);
+                if (!pairCode || pairCode === '0x' || pairCode.length <= 4) {
+                    showError('Pair contract not found on-chain');
+                    return;
+                }
+                
+                // Step 3: Get Swap events from the pair
+                showProgress('Fetching swap events (this may take a moment)...');
+                const swapLogs = await rpcCall('eth_getLogs', [{
+                    fromBlock: '0x1',
+                    toBlock: 'latest',
+                    address: pairAddress,
+                    topics: [SWAP_TOPIC_V3]
+                }]);
+                
+                if (!swapLogs || swapLogs.length === 0) {
+                    showError('No swap events found for this pair');
+                    return;
+                }
+                
+                showProgress(`Found ${swapLogs.length} swaps. Tracing buyers...`);
+                
+                // Step 4: Get unique TX hashes and trace to find real buyers
+                const seenTxs = new Set();
+                const txHashes = [];
+                for (const log of swapLogs) {
+                    const tx = log.transactionHash;
+                    if (!seenTxs.has(tx)) {
+                        seenTxs.add(tx);
+                        txHashes.push({ tx, block: parseInt(log.blockNumber, 16) });
+                    }
+                }
+                
+                // Step 5: Get TX "from" for each unique swap (first 100 unique TXs)
                 const walletMap = new Map();
+                const txsToCheck = txsToCheck.slice(0, 100);
                 
-                for (const log of logs) {
-                    if (!log.topics || log.topics.length < 3) continue;
-                    
-                    // Extract address from topic - handle both padded and unpadded formats
-                    let topic2 = log.topics[2];
-                    if (topic2 && topic2.startsWith('0x') && topic2.length > 42) {
-                        // Padded format: 0x + 24 zeros + 20 byte address
-                        topic2 = '0x' + topic2.slice(-40);
+                // Batch fetch TX details
+                for (let i = 0; i < Math.min(txHashes.length, 100); i++) {
+                    const { tx, block } = txHashes[i];
+                    try {
+                        const txData = await rpcCall('eth_getTransactionByHash', [tx]);
+                        if (txData && txData.from) {
+                            const from = txData.from.toLowerCase();
+                            if (!walletMap.has(from)) {
+                                walletMap.set(from, { firstBlock: block, txHash: tx, count: 1 });
+                            } else {
+                                walletMap.get(from).count++;
+                            }
+                        }
+                    } catch (e) {
+                        // Skip failed TX lookups
                     }
-                    
-                    const toAddr = topic2.toLowerCase();
-                    const amount = BigInt(log.data || '0x0');
-                    
-                    if (!walletMap.has(toAddr)) {
-                        walletMap.set(toAddr, { received: 0n, blocks: [], txHashes: new Set(), firstBlock: Infinity });
+                    if (i % 10 === 0) {
+                        showProgress(`Tracing buyers... ${i}/${Math.min(txHashes.length, 100)}`);
                     }
-                    walletMap.get(toAddr).received += amount;
-                    const block = parseInt(log.blockNumber, 16);
-                    walletMap.get(toAddr).blocks.push(block);
-                    if (log.transactionHash) walletMap.get(toAddr).txHashes.add(log.transactionHash);
-                    walletMap.get(toAddr).firstBlock = Math.min(walletMap.get(toAddr).firstBlock, block);
                 }
                 
+                showProgress(`Found ${walletMap.size} unique wallets. Checking types...`);
+                
+                // Step 6: Check if each wallet is EOA or contract
                 const wallets = [];
-                for (const [wAddr, data] of walletMap) {
-                    const codeResp = await fetch(RPC_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_getCode', params: [wAddr, 'latest'], id: 1 })
-                    }).then(r => r.json());
-                    
-                    const code = codeResp.result || '';
-                    const isContract = code && code !== '0x' && code !== '0x0' && code.length > 2;
-                    
-                    let wtype, badge;
-                    if (data.received > BigInt(1e12)) {
-                        if (isContract) { wtype = 'pool_manager'; badge = 'Pool Manager'; }
-                        else { wtype = 'buyer'; badge = 'Early Buyer'; }
-                    } else if (isContract) {
-                        wtype = 'contract'; badge = 'Contract';
-                    } else {
-                        wtype = 'buyer'; badge = 'Active Wallet';
+                let checked = 0;
+                for (const [addr, data] of walletMap) {
+                    try {
+                        const code = await rpcCall('eth_getCode', [addr, 'latest']);
+                        const isContract = code && code !== '0x' && code.length > 4;
+                        
+                        wallets.push({
+                            address: addr,
+                            type: isContract ? 'contract' : 'buyer',
+                            badge: isContract ? 'Contract' : 'Early Buyer',
+                            first_block: data.firstBlock,
+                            tx_hash: data.txHash,
+                            swap_count: data.count
+                        });
+                    } catch (e) {
+                        // Skip failed lookups
                     }
-                    
-                    const decimals = parseInt(decimalsHex, 16) || 18;
-                    
-                    wallets.push({
-                        address: wAddr,
-                        type: wtype,
-                        badge: badge,
-                        amount: formatAmount(Number(data.received), decimals),
-                        first_buy_block: data.firstBlock === Infinity ? null : data.firstBlock,
-                        tx_hash: [...data.txHashes][0],
-                        tx_count: data.txHashes.size,
-                        eth_balance: 0,
-                        burst_score: Math.min(100, Math.max(0, 100 - (data.firstBlock - deployBlockNum)))
-                    });
+                    checked++;
+                    if (checked % 5 === 0) {
+                        showProgress(`Checking wallet types... ${checked}/${walletMap.size}`);
+                    }
                 }
                 
-                wallets.sort((a, b) => (a.first_buy_block || 0) - (b.first_buy_block || 0));
-                displayResults(wallets);
+                // Sort by first block
+                wallets.sort((a, b) => a.first_block - b.first_block);
+                
+                // Show results
+                const buyers = wallets.filter(w => w.type === 'buyer');
+                const contracts = wallets.filter(w => w.type === 'contract');
+                
+                document.getElementById('totalWallets').textContent = wallets.length;
+                document.getElementById('realBuyers').textContent = buyers.length;
+                document.getElementById('contractsFiltered').textContent = contracts.length;
+                document.getElementById('statsSection').style.display = 'grid';
+                
+                renderWallets(wallets.slice(0, 50));
                 
             } catch (err) {
                 console.error('Scan error:', err);
                 showError(err.message || 'Failed to scan contract');
             } finally {
                 setLoading(false);
+                document.getElementById('progress').style.display = 'none';
             }
-        }
-        
-        function displayResults(wallets) {
-            const buyers = wallets.filter(w => w.type === 'buyer').length;
-            const contracts = wallets.filter(w => ['contract', 'pool_manager'].includes(w.type)).length;
-            
-            document.getElementById('totalWallets').textContent = wallets.length;
-            document.getElementById('realBuyers').textContent = buyers;
-            document.getElementById('botsFiltered').textContent = contracts;
-            document.getElementById('statsSection').style.display = 'grid';
-            
-            renderWallets(wallets.slice(0, 50));
         }
         
         function renderWallets(wallets) {
@@ -353,13 +292,9 @@
                 return;
             }
             
-            list.innerHTML = wallets.map(w => {
-                const icon = w.type === 'buyer' ? '💎' : 
-                            w.type === 'contract' ? '📦' : 
-                            w.type === 'burner' ? '🔥' : '⚙️';
-                const badgeClass = w.type === 'buyer' ? 'badge-buyer' : 
-                                  w.type === 'burner' ? 'badge-burner' : 
-                                  w.type === 'pool_manager' ? 'badge-pool' : 'badge-contract';
+            list.innerHTML = wallets.map((w, i) => {
+                const icon = w.type === 'buyer' ? '💎' : '📦';
+                const badgeClass = w.type === 'buyer' ? 'badge-buyer' : 'badge-contract';
                 
                 return `
                     <div class="wallet-card">
@@ -372,20 +307,16 @@
                         </div>
                         <div class="wallet-details">
                             <div class="detail-item">
-                                <div class="detail-label">Amount</div>
-                                <div class="detail-value">${w.amount}</div>
-                            </div>
-                            <div class="detail-item">
                                 <div class="detail-label">First Block</div>
-                                <div class="detail-value">#${w.first_buy_block ? w.first_buy_block.toLocaleString() : '—'}</div>
+                                <div class="detail-value">#${w.first_block.toLocaleString()}</div>
                             </div>
                             <div class="detail-item">
-                                <div class="detail-label">TX Count</div>
-                                <div class="detail-value">${w.tx_count}</div>
+                                <div class="detail-label">Swap Count</div>
+                                <div class="detail-value">${w.swap_count}</div>
                             </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Burst Score</div>
-                                <div class="detail-value">${w.burst_score}/100</div>
+                            <div class="detail-item" style="grid-column: 1 / -1;">
+                                <div class="detail-label">First TX</div>
+                                <div class="detail-value" style="font-size: 10px; word-break: break-all; font-family: monospace;">${w.tx_hash}</div>
                             </div>
                         </div>
                     </div>
@@ -395,12 +326,10 @@
         
         function setLoading(loading) {
             const btn = document.getElementById('scanBtn');
-            const list = document.getElementById('walletList');
-            
             if (loading) {
                 btn.disabled = true;
                 btn.textContent = 'Scanning...';
-                list.innerHTML = '<div class="spinner"></div>';
+                document.getElementById('walletList').innerHTML = '<div class="spinner"></div>';
             } else {
                 btn.disabled = false;
                 btn.textContent = 'Scan';
