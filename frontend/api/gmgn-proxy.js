@@ -57,6 +57,21 @@ async function gmgnRequest(path, params = {}) {
   return JSON.parse(responseBody);
 }
 
+
+// Rate limiting
+let lastRequestTime = 0;
+const MIN_DELAY_MS = 2000; // 2 seconds between requests
+
+async function rateLimitedRequest(path, params = {}) {
+  const now = Date.now();
+  const elapsed = now - lastRequestTime;
+  if (elapsed < MIN_DELAY_MS) {
+    await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
+  }
+  lastRequestTime = Date.now();
+  return gmgnRequest(path, params);
+}
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -81,7 +96,7 @@ export default async function handler(req, res) {
     switch (action) {
       case 'traders':
         if (!address) return res.status(400).json({ error: 'Missing address' });
-        data = await gmgnRequest('/v1/market/token_top_traders', {
+        data = await rateLimitedRequest('/v1/market/token_top_traders', {
           chain: chainId,
           address,
           limit: limit || 50,
@@ -93,14 +108,14 @@ export default async function handler(req, res) {
 
       case 'info':
         if (!address) return res.status(400).json({ error: 'Missing address' });
-        data = await gmgnRequest('/v1/token/info', {
+        data = await rateLimitedRequest('/v1/token/info', {
           chain: chainId,
           address
         });
         break;
 
       case 'trending':
-        data = await gmgnRequest('/v1/market/rank', {
+        data = await rateLimitedRequest('/v1/market/rank', {
           chain: chainId,
           limit: limit || 10,
           interval: '1h'
@@ -109,7 +124,7 @@ export default async function handler(req, res) {
 
       case 'holders':
         if (!address) return res.status(400).json({ error: 'Missing address' });
-        data = await gmgnRequest('/v1/market/token_top_holders', {
+        data = await rateLimitedRequest('/v1/market/token_top_holders', {
           chain: chainId,
           address,
           limit: limit || 20,
@@ -120,7 +135,7 @@ export default async function handler(req, res) {
 
       case 'activity':
         if (!address) return res.status(400).json({ error: 'Missing address' });
-        data = await gmgnRequest('/v1/user/wallet_activity', {
+        data = await rateLimitedRequest('/v1/user/wallet_activity', {
           chain: chainId,
           wallet_address: address,
           limit: limit || 20
@@ -129,7 +144,7 @@ export default async function handler(req, res) {
 
       case 'score':
         if (!address) return res.status(400).json({ error: 'Missing address' });
-        data = await gmgnRequest('/v1/user/wallet_score', {
+        data = await rateLimitedRequest('/v1/user/wallet_score', {
           chain: chainId,
           wallet_address: address
         });
