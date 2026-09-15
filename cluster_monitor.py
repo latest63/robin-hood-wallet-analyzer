@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """
-Cluster Builder v2 — Profitability-focused
-Finds early buyers of a token, checks if they made 10x+ profit
-Builds cluster from profitable wallets for monitoring
+Cluster Builder + Monitor v4
+Supports v3 and v4 Uniswap pairs on Robin Hood Chain (4663)
+
+v4: wallet in topics[2] is the router/contract, NOT the human.
+    Must trace TX to find the actual buyer (tx.from).
+
+v3: pair contract emits Swap, trace TX to find buyer.
 
 Usage:
-  python3 cluster_builder.py <TOKEN_CA>                    # Build cluster
-  python3 cluster_builder.py <TOKEN_CA> monitor            # Build + monitor
-  python3 cluster_builder.py <TOKEN_CA> monitor <webhook>  # Build + monitor + Discord
+  python3 cluster_monitor.py <TOKEN_CA>                    # Build cluster
+  python3 cluster_monitor.py <TOKEN_CA> monitor            # Build + monitor
+  python3 cluster_monitor.py <TOKEN_CA> monitor <webhook>  # Build + monitor + Discord
 """
 import sys
 import requests
@@ -18,7 +22,7 @@ from datetime import datetime
 
 TOKEN = sys.argv[1] if len(sys.argv) > 1 else None
 if not TOKEN:
-    print("Usage: python3 cluster_builder.py <TOKEN_CA> [monitor] [webhook]")
+    print("Usage: python3 cluster_monitor.py <TOKEN_CA> [monitor] [webhook]")
     sys.exit(1)
 
 MODE = sys.argv[2] if len(sys.argv) > 2 else "build"
@@ -31,21 +35,21 @@ V4_SWAP_TOPIC = "0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad71
 V4_POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951"
 DATA_FILE = "data/cluster.json"
 POLL_SECONDS = 5
-MIN_PROFIT_MULTIPLE = 10  # 10x profit minimum
-BLOCKS_TO_SCAN = 200000  # Scan ~6 hours back
+MIN_SCORE = 50
+BLOCKS_TO_SCAN = 5000
 
 def rpc(method, params):
     r = requests.post(RPC, json={"jsonrpc":"2.0","id":1,"method":method,"params":params}, timeout=30)
     return r.json().get("result")
 
-def send_discord(wallet, block, score, symbol, profit_mult):
+def send_discord(wallet, block, score, symbol):
     if not WEBHOOK:
         return
     try:
         payload = {
             "embeds": [{
                 "title": f"�� Cluster Buy Alert — {symbol}",
-                "description": f"**Wallet:** [`{wallet[:10]}...{wallet[-6:]}`](https://explorer.mainnet.chain.robinhood.com/address/{wallet})\n**Profit on {symbol}:** {profit_mult}x\n**Block:** {block:,}",
+                "description": f"**Wallet:** [`{wallet[:10]}...{wallet[-6:]}`](https://explorer.mainnet.chain.robinhood.com/address/{wallet})\n**Score:** {score}\n**Block:** {block:,}",
                 "color": 0x00ff00,
                 "timestamp": datetime.utcnow().isoformat() + "Z",
                 "footer": {"text": "Cluster Monitor • robinhood chain"}
@@ -56,7 +60,7 @@ def send_discord(wallet, block, score, symbol, profit_mult):
     except:
         pass
 
-# ─── STEP 1: Get token info from DexScreener ───
+# ─── STEP 1: Find pair ───
 print(f"�� Scanning {TOKEN[:10]}...")
 r = requests.get(f"https://api.dexscreener.com/latest/dex/tokens/{TOKEN}", timeout=30)
 data = r.json()
@@ -64,7 +68,6 @@ if not data.get("pairs"):
     print("❌ No pairs found")
     sys.exit(1)
 
-# Find best pair
 v3_pairs = [p for p in data["pairs"] if p.get("labels") and "v3" in p.get("labels", [])]
 v4_pairs = [p for p in data["pairs"] if p.get("labels") and "v4" in p.get("labels", [])]
 
@@ -80,15 +83,16 @@ else:
 
 symbol = pair.get("baseToken", {}).get("symbol", "?")
 name = pair.get("baseToken", {}).get("name", "?")
-current_price = float(pair.get("priceUsd", "0"))
+price = pair.get("priceUsd", "0")
 pair_addr = pair.get("pairAddress", "").lower()
+buys_24h = pair.get("txns", {}).get("h24", {}).get("buys", 0)
 
 print(f"  Token: {name} ({symbol})")
-print(f"  Current Price: ${current_price:.10f}")
-print(f"  Type: {pair_type}")
+print(f"  Price: ${price} | Type: {pair_type}")
+print(f"  24h buys: {buys_24h}")
 
-# ─── STEP 2: Find early swaps (last 200k blocks) ───
-current_hex = str(rpc("eth_blockNumber", []))
+# ─── STEP 2: Get swaps ───
+current_hex = rpc("eth_blockNumber", [])
 current_block = int(current_hex, 16)
 from_block = max(0, current_block - BLOCKS_TO_SCAN)
 
@@ -122,14 +126,12 @@ if not all_swaps:
     print("❌ No swaps found")
     sys.exit(1)
 
-# ─── STEP 3: Get earliest swaps (first 20) to find early buyers ───
-print("\n�� Finding early buyers (first 20 swaps)...")
-early_swaps = all_swaps[:20]
-
+# ─── STEP 3: Trace TXs to find real buyers ───
+print("\n�� Tracing transactions to find real buyers...")
 seen_txs = set()
-early_buyers = []
+buyers = []
 
-for swap in early_swaps:
+for swap in all_swaps:
     tx_hash = swap["transactionHash"]
     if tx_hash in seen_txs:
         continue
@@ -140,37 +142,25 @@ for swap in early_swaps:
         if tx and tx.get("from"):
             addr = tx["from"].lower()
             block = int(swap["blockNumber"], 16)
-            early_buyers.append({"addr": addr, "block": block, "tx": tx_hash})
+            buyers.append({"addr": addr, "block": block, "tx": tx_hash})
         time.sleep(0.05)
     except:
         pass
 
-# Deduplicate
 seen_addrs = set()
-unique_early = []
-for b in early_buyers:
+unique_buyers = []
+for b in buyers:
     if b["addr"] not in seen_addrs:
         seen_addrs.add(b["addr"])
-        unique_early.append(b)
+        unique_buyers.append(b)
 
-print(f"  {len(unique_early)} unique early buyers")
+print(f"  {len(unique_buyers)} unique real buyers")
 
-# ─── STEP 4: For each early buyer, estimate their profit ───
-# Simple approach: if they bought early and the token did 10x, they made 10x
-# We don't know exact buy price, but early buyers got in at lowest prices
-
-print("\n�� Checking profitability...")
-print(f"  Token went from ~first swap price to ${current_price:.10f}")
-print(f"  Looking for wallets that bought in first 20 swaps...")
-
-# Since we can't easily calculate exact buy price from swap data,
-# we'll assume early buyers (first 20 swaps) made 10x+ if the token is up 10x
-# from its initial price. We need to verify the token actually did 10x.
-
-# For now, let's filter for active traders among early buyers
+# ─── STEP 4: Filter EOAs with activity ───
+print("\n�� Filtering active traders...")
 profitable = []
 
-for b in unique_early:
+for b in unique_buyers:
     addr = b["addr"]
     try:
         code = rpc("eth_getCode", [addr, "latest"])
@@ -184,27 +174,27 @@ for b in unique_early:
         # Active trader: nonce 5+ AND balance > 0.001 ETH
         if nonce >= 5 and eth_bal >= 0.001:
             score = min(nonce, 500) + min(int(eth_bal * 100), 200)
-            profitable.append({
-                "wallet": addr,
-                "buy_block": b["block"],
-                "tx": b["tx"],
-                "nonce": nonce,
-                "balance_eth": round(eth_bal, 6),
-                "score": score,
-                "source": f"CA:{TOKEN[:10]}",
-                "token": name,
-                "symbol": symbol,
-                "early_buyer": True  # They bought in first 20 swaps
-            })
+            if score >= MIN_SCORE:
+                profitable.append({
+                    "wallet": addr,
+                    "buy_block": b["block"],
+                    "tx": b["tx"],
+                    "nonce": nonce,
+                    "balance_eth": round(eth_bal, 6),
+                    "score": score,
+                    "source": f"CA:{TOKEN[:10]}",
+                    "token": name,
+                    "symbol": symbol
+                })
         time.sleep(0.05)
     except:
         pass
 
 profitable.sort(key=lambda x: x["score"], reverse=True)
 
-print(f"\n✅ Cluster: {len(profitable)} wallets (early buyers, active traders)")
+print(f"\n✅ Cluster: {len(profitable)} wallets")
 for p in profitable[:10]:
-    print(f"  {p['wallet'][:10]}... | score={p['score']} | nonce={p['nonce']} | {p['balance_eth']}ETH | block={p['buy_block']}")
+    print(f"  {p['wallet'][:10]}... | score={p['score']} | nonce={p['nonce']} | {p['balance_eth']}ETH")
 
 os.makedirs("data", exist_ok=True)
 with open(DATA_FILE, "w") as f:
@@ -213,7 +203,7 @@ with open(DATA_FILE, "w") as f:
 print(f"\n�� Saved: {DATA_FILE} ({len(profitable)} wallets)")
 
 if MODE != "monitor":
-    print(f"\n▶️ Monitor: python3 cluster_builder.py {TOKEN} monitor [webhook]")
+    print(f"\n▶️ Monitor: python3 cluster_monitor.py {TOKEN} monitor [webhook]")
     sys.exit(0)
 
 # ─── STEP 5: Monitor loop ───
@@ -271,7 +261,7 @@ try:
                             print(f"   Wallet: {buyer}")
                             print(f"   Score: {matched['score']}")
                             print(f"   Block: {block:,}")
-                            send_discord(buyer, block, matched["score"], symbol, "10x+")
+                            send_discord(buyer, block, matched["score"], symbol)
                 except:
                     pass
 

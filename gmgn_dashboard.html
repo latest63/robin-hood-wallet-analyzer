@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GMGN Cluster Monitor</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #58a6ff; margin-bottom: 20px; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 20px; margin-bottom: 20px; }
+        input, button { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 10px; border-radius: 6px; }
+        button { background: #238636; border-color: rgba(240,246,252,0.1); cursor: pointer; font-weight: bold; }
+        button:hover { background: #2ea043; }
+        button:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+        .flex { display: flex; gap: 10px; }
+        .full-width { width: 100%; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #21262d; }
+        th { color: #8b949e; }
+        .profit { color: #3fb950; }
+        .pnl { color: #58a6ff; }
+        .wallet-link { color: #58a6ff; text-decoration: none; }
+        .tag { background: #21262d; padding: 2px 6px; border-radius: 20px; font-size: 12px; color: #8b949e; }
+        .alert-box { background: #0d1117; border: 1px solid #30363d; height: 300px; overflow-y: auto; padding: 10px; font-family: monospace; }
+        .alert-item { border-bottom: 1px solid #21262d; padding: 10px 0; }
+        .status-active { color: #3fb950; font-weight: bold; }
+        .status-inactive { color: #f85149; font-weight: bold; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GMGN Profitable Cluster Builder</h1>
+        
+        <!-- Token Scanner -->
+        <div class="card">
+            <h2>1. Find Profitable Traders</h2>
+            <div class="flex">
+                <input type="text" id="tokenInput" placeholder="Enter Token Address (0x...)" class="full-width">
+                <button onclick="scanToken()" id="scanBtn">Scan</button>
+            </div>
+            
+            <div id="tokenInfo" class="hidden" style="margin-top: 15px;">
+                <div class="flex" style="gap: 20px;">
+                    <div><strong id="tName">Name</strong> (<span id="tSymbol">SYM</span>)</div>
+                    <div>Price: $<span id="tPrice">0</span></div>
+                    <div>Holders: <span id="tHolders">0</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trader List -->
+        <div class="card hidden" id="traderCard">
+            <h2>2. Select Traders for Cluster</h2>
+            <div style="margin-bottom: 10px;">
+                <button onclick="selectAll()">Select Top 10</button>
+                <button onclick="saveCluster()" style="background: #58a6ff; margin-left: 10px;">Save Cluster (<span id="selectedCount">0</span>)</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="selectAllCheck"></th>
+                        <th>Wallet</th>
+                        <th>Profit</th>
+                        <th>PnL %</th>
+                        <th>Buys</th>
+                    </tr>
+                </thead>
+                <tbody id="traderList"></tbody>
+            </table>
+        </div>
+
+        <!-- Monitoring -->
+        <div class="card">
+            <h2>3. Monitor Cluster</h2>
+            <div class="flex" style="margin-bottom: 15px;">
+                <input type="text" id="webhookInput" placeholder="Discord Webhook URL" class="full-width">
+                <button onclick="startMonitor()" id="startBtn">Start</button>
+                <button onclick="stopMonitor()" id="stopBtn" class="hidden" style="background: #f85149;">Stop</button>
+            </div>
+            <div>Status: <span id="monitorStatus" class="status-inactive">Inactive</span></div>
+            
+            <h3 style="margin-top: 20px;">Alerts</h3>
+            <div id="alertBox" class="alert-box">
+                <div style="color: #484f58;">Waiting for alerts...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let traders = [];
+        
+        async function scanToken() {
+            const token = document.getElementById('tokenInput').value;
+            const btn = document.getElementById('scanBtn');
+            btn.disabled = true;
+            btn.innerText = "Scanning...";
+            
+            try {
+                const response = await fetch('/api/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({token: token})
+                });
+                const data = await response.json();
+                
+                // Update UI
+                document.getElementById('tName').innerText = data.token.name;
+                document.getElementById('tSymbol').innerText = data.token.symbol;
+                document.getElementById('tPrice').innerText = data.token.price.price;
+                document.getElementById('tHolders').innerText = data.token.holder_count.toLocaleString();
+                document.getElementById('tokenInfo').classList.remove('hidden');
+                
+                traders = data.traders;
+                renderTraders();
+                document.getElementById('traderCard').classList.remove('hidden');
+                
+            } catch (e) {
+                alert("Error: " + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Scan";
+            }
+        }
+        
+        function renderTraders() {
+            const list = document.getElementById('traderList');
+            list.innerHTML = traders.map((t, i) => `
+                <tr>
+                    <td><input type="checkbox" class="trader-check" data-index="${i}" ${t.selected ? 'checked' : ''} onchange="updateSelectedCount()"></td>
+                    <td><a href="https://explorer.mainnet.chain.robinhood.com/address/${t.wallet}" target="_blank" class="wallet-link">${t.wallet.slice(0, 10)}...</a></td>
+                    <td class="profit">$${Math.round(t.profit).toLocaleString()}</td>
+                    <td class="pnl">${(t.pnl * 100).toFixed(1)}%</td>
+                    <td>${t.buys}</td>
+                </tr>
+            `).join('');
+            updateSelectedCount();
+        }
+        
+        function selectAll() {
+            document.querySelectorAll('.trader-check').forEach((cb, i) => {
+                cb.checked = i < 10;
+            });
+            updateSelectedCount();
+        }
+        
+        function updateSelectedCount() {
+            const count = document.querySelectorAll('.trader-check:checked').length;
+            document.getElementById('selectedCount').innerText = count;
+        }
+        
+        async function saveCluster() {
+            const selected = [];
+            document.querySelectorAll('.trader-check:checked').forEach(cb => {
+                selected.push(traders[parseInt(cb.dataset.index)]);
+            });
+            
+            await fetch('/api/cluster/save', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({cluster: selected})
+            });
+            alert("Cluster saved!");
+        }
+        
+        async function startMonitor() {
+            const webhook = document.getElementById('webhookInput').value;
+            await fetch('/api/monitor/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({webhook: webhook})
+            });
+            document.getElementById('startBtn').classList.add('hidden');
+            document.getElementById('stopBtn').classList.remove('hidden');
+            document.getElementById('monitorStatus').innerText = "Active";
+            document.getElementById('monitorStatus').className = "status-active";
+        }
+        
+        async function stopMonitor() {
+            await fetch('/api/monitor/stop', {method: 'POST'});
+            document.getElementById('startBtn').classList.remove('hidden');
+            document.getElementById('stopBtn').classList.add('hidden');
+            document.getElementById('monitorStatus').innerText = "Inactive";
+            document.getElementById('monitorStatus').className = "status-inactive";
+        }
+    </script>
+</body>
+</html>
