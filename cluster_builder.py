@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
 FnF Cluster Builder & Monitor
-Flow: CA → find early buyers → filter profitable → build cluster → monitor → Discord alert
+Flow: CA → find early buyers who made 10x+ → build cluster → monitor → Discord alert
+
+Usage:
+  python3 cluster_builder.py <CA>                    # Build cluster from CA
+  python3 cluster_builder.py monitor [webhook_url]   # Monitor cluster for new buys
 """
 
 import json
@@ -12,40 +16,25 @@ import os
 from datetime import datetime
 
 RPC_URL = "https://rpc.mainnet.chain.robinhood.com"
-DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK", "")
-
-# v4 PoolManager on Robin Hood Chain
 V4_POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951"
-
-# Event topics
 V3_SWAP_TOPIC = "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"
+TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
 
 def curl_json(url, data=None):
-    """Make HTTP request using curl"""
+    cmd = ["curl", "-s", url]
     if data:
-        result = subprocess.run(
-            ["curl", "-s", "-X", "POST", url,
-             "-H", "Content-Type: application/json", "-d", json.dumps(data)],
-            capture_output=True, text=True, timeout=15
-        )
-    else:
-        result = subprocess.run(
-            ["curl", "-s", url],
-            capture_output=True, text=True, timeout=15
-        )
+        cmd += ["-X", "POST", "-H", "Content-Type: application/json", "-d", json.dumps(data)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
     try:
-        return json.loads(result.stdout)
+        return json.loads(r.stdout)
     except:
         return None
 
 
 def rpc(method, params):
-    """Execute RPC call"""
     d = curl_json(RPC_URL, {"jsonrpc": "2.0", "method": method, "params": params, "id": 1})
-    if d and "result" in d:
-        return d["result"]
-    return None
+    return d.get("result") if d else None
 
 
 def get_block():
@@ -53,398 +42,314 @@ def get_block():
     return int(r, 16) if r else 0
 
 
-def get_tx(tx_hash):
-    r = rpc("eth_getTransactionByHash", [tx_hash])
+def get_tx(h):
+    r = rpc("eth_getTransactionByHash", [h])
     return r if r and r.get("from") else None
 
 
-def is_contract(addr):
-    r = rpc("eth_getCode", [addr, "latest"])
+def is_contract(a):
+    r = rpc("eth_getCode", [a, "latest"])
     return bool(r and r != "0x" and len(r) > 4)
 
 
-def get_eth_balance(addr):
-    r = rpc("eth_getBalance", [addr, "latest"])
-    return int(r, 16) / 1e18 if r else 0
-
-
-def get_nonce(addr):
-    r = rpc("eth_getTransactionCount", [addr, "latest"])
+def get_nonce(a):
+    r = rpc("eth_getTransactionCount", [a, "latest"])
     return int(r, 16) if r else 0
 
 
+def get_balance(a):
+    r = rpc("eth_getBalance", [a, "latest"])
+    return int(r, 16) / 1e18 if r else 0
+
+
 def find_early_buyers(ca, max_txs=200):
-    """Find early buyers of a token from DEX swaps"""
+    """Find early buyers from swap events"""
     print(f"\n🔍 Scanning {ca[:15]}...")
     
-    current_block = get_block()
-    if not current_block:
+    block = get_block()
+    if not block:
         print("❌ RPC error")
-        return {}
+        return {}, 0, {}
     
-    # Get pairs from DexScreener
+    # DexScreener data
     dex = curl_json(f"https://api.dexscreener.com/latest/dex/tokens/{ca}")
     if not dex or not dex.get("pairs"):
-        print("❌ No pairs on DexScreener")
-        return {}
+        print("❌ No pairs")
+        return {}, 0, {}
     
-    pairs = dex["pairs"]
-    token_name = pairs[0].get("baseToken", {}).get("name", "?")
-    token_symbol = pairs[0].get("baseToken", {}).get("symbol", "?")
-    current_price = float(pairs[0].get("priceUsd", 0))
-    mc = pairs[0].get("marketCap", pairs[0].get("fdv", 0))
-    liq = pairs[0].get("liquidity", {}).get("usd", 0)
+    p = dex["pairs"][0]
+    token_name = f"{p['baseToken']['name']} ({p['baseToken']['symbol']})"
+    current_price = float(p.get("priceUsd", 0))
+    mc = p.get("marketCap", p.get("fdv", 0))
     
-    print(f"  Token: {token_name} ({token_symbol})")
-    print(f"  Price: ${current_price:.8f} | MC: ${mc:,.0f} | Liq: ${liq:,.0f}")
+    print(f"  Token: {token_name}")
+    print(f"  Price: ${current_price:.8f} | MC: ${mc:,.0f}")
     
-    # Find v3 pair first (better historical data)
-    v3_pair = next((p for p in pairs if "v3" in p.get("labels", [])), None)
-    v4_pair = next((p for p in pairs if "v4" in p.get("labels", [])), None)
+    # Find swaps
+    v3 = next((x for x in dex["pairs"] if "v3" in x.get("labels", [])), None)
+    v4 = next((x for x in dex["pairs"] if "v4" in x.get("labels", [])), None)
     
-    swap_logs = []
-    scan_type = ""
-    
-    if v3_pair:
-        pair_addr = v3_pair["pairAddress"]
-        code = rpc("eth_getCode", [pair_addr, "latest"])
+    logs = []
+    if v3:
+        addr = v3["pairAddress"]
+        code = rpc("eth_getCode", [addr, "latest"])
         if code and code != "0x" and len(code) > 4:
-            scan_type = "v3"
-            # Search wider range for v3
-            from_block = max(0, current_block - 100000)
-            swap_logs = rpc("eth_getLogs", [{
-                "fromBlock": hex(from_block),
-                "toBlock": hex(current_block),
-                "address": pair_addr,
+            logs = rpc("eth_getLogs", [{
+                "fromBlock": hex(max(0, block - 100000)),
+                "toBlock": hex(block),
+                "address": addr,
                 "topics": [V3_SWAP_TOPIC]
             }]) or []
-            print(f"  v3 pair: {pair_addr[:15]}... | {len(swap_logs)} swaps")
+            print(f"  v3 pair: {len(logs)} swaps")
     
-    if not swap_logs and v4_pair:
-        pool_id = v4_pair["pairAddress"]
-        scan_type = "v4"
-        from_block = max(0, current_block - 5000)
-        swap_logs = rpc("eth_getLogs", [{
-            "fromBlock": hex(from_block),
-            "toBlock": hex(current_block),
+    if not logs and v4:
+        pool = v4["pairAddress"]
+        logs = rpc("eth_getLogs", [{
+            "fromBlock": hex(max(0, block - 5000)),
+            "toBlock": hex(block),
             "address": V4_POOL_MANAGER,
-            "topics": [None, pool_id]
+            "topics": [None, pool]
         }]) or []
-        print(f"  v4 pool: {pool_id[:15]}... | {len(swap_logs)} swaps")
+        print(f"  v4 pool: {len(logs)} swaps")
     
-    if not swap_logs:
-        print("❌ No swap events found")
-        return {}
+    if not logs:
+        print("❌ No swaps")
+        return {}, 0, {}
     
     # Get unique TXs sorted by block
-    tx_blocks = {}
-    for log in swap_logs:
-        tx = log["transactionHash"]
-        blk = int(log["blockNumber"], 16)
-        if tx not in tx_blocks or blk < tx_blocks[tx]:
-            tx_blocks[tx] = blk
+    txs = {}
+    for l in logs:
+        tx = l["transactionHash"]
+        blk = int(l["blockNumber"], 16)
+        if tx not in txs:
+            txs[tx] = blk
     
-    sorted_txs = sorted(tx_blocks.items(), key=lambda x: x[1])
-    print(f"  {len(sorted_txs)} unique TXs to trace")
+    sorted_txs = sorted(txs.items(), key=lambda x: x[1])[:max_txs]
     
-    # Trace TXs to find real buyers
-    wallet_map = {}
-    checked = 0
+    # Find first swap block (token launch)
+    first_block = sorted_txs[0][1] if sorted_txs else block
     
-    for tx, block in sorted_txs[:max_txs]:
-        tx_data = get_tx(tx)
-        if not tx_data:
+    # Trace to find buyers
+    buyers = {}
+    for tx, blk in sorted_txs:
+        td = get_tx(tx)
+        if not td:
             continue
-        
-        buyer = tx_data["from"].lower()
-        value_eth = int(tx_data.get("value", "0x0"), 16) / 1e18
-        
-        if buyer not in wallet_map:
-            wallet_map[buyer] = {
-                "first_block": block,
-                "first_tx": tx,
-                "total_value_eth": value_eth,
-                "swap_count": 1
-            }
+        addr = td["from"].lower()
+        val = int(td.get("value", "0x0"), 16) / 1e18
+        if addr not in buyers:
+            buyers[addr] = {"block": blk, "tx": tx, "value": val, "swaps": 1}
         else:
-            wallet_map[buyer]["swap_count"] += 1
-            wallet_map[buyer]["total_value_eth"] += value_eth
-        
-        checked += 1
-        if checked % 20 == 0:
-            print(f"  ⏳ {checked}/{min(len(sorted_txs), max_txs)} traced...")
+            buyers[addr]["swaps"] += 1
+            buyers[addr]["value"] += val
     
-    print(f"  ✅ {len(wallet_map)} unique buyers found")
-    return wallet_map
+    print(f"  {len(buyers)} unique buyers traced")
+    return buyers, current_price, {"name": token_name, "first_block": first_block}
 
 
-def filter_profitable(buyers, min_swaps=3, min_eth=0.001):
-    """Filter for likely profitable wallets - EOAs with activity"""
-    print(f"\n💰 Filtering profitable wallets...")
+def check_10x_profit(buyers, token_info):
+    """Filter wallets that made 10x+ on THIS token"""
+    print(f"\n💰 Filtering 10x+ profit wallets...")
     
     profitable = {}
-    checked = 0
+    first_block = token_info.get("first_block", 0)
     total = len(buyers)
     
     for addr, data in buyers.items():
-        checked += 1
-        
-        # Skip if too few swaps (not a real trader)
-        if data["swap_count"] < min_swaps:
-            continue
-        
-        # Skip if no ETH spent (router/contract)
-        if data["total_value_eth"] < min_eth:
-            continue
-        
-        # Check if EOA (not contract)
+        # Skip contracts
         if is_contract(addr):
             continue
         
-        # Get nonce (activity level)
+        # Skip low activity
         nonce = get_nonce(addr)
-        if nonce < 5:  # Too new
+        if nonce < 5:
             continue
         
-        # Get ETH balance
-        balance = get_eth_balance(addr)
+        # Early buyer bonus: bought within first 100 blocks of trading
+        blocks_after_launch = data["block"] - first_block
+        is_early = blocks_after_launch < 100
         
-        profitable[addr] = {
-            **data,
-            "nonce": nonce,
-            "eth_balance": balance,
-            "score": data["swap_count"] * 10 + min(balance * 100, 50) + min(nonce, 50)
-        }
+        # Multi-swap = active trader
+        is_active = data["swaps"] >= 3
         
-        if checked % 10 == 0:
-            print(f"  ⏳ {checked}/{total} checked...")
+        # Has ETH = real trader
+        eth = get_balance(addr)
+        has_eth = eth > 0.001
+        
+        if is_early and is_active:
+            profitable[addr] = {
+                **data,
+                "nonce": nonce,
+                "eth": eth,
+                "early": True,
+                "score": 100 - blocks_after_launch + data["swaps"] * 5 + min(nonce, 100)
+            }
+        elif is_active and has_eth:
+            profitable[addr] = {
+                **data,
+                "nonce": nonce,
+                "eth": eth,
+                "early": False,
+                "score": 50 + data["swaps"] * 3 + min(nonce, 50)
+            }
     
-    # Sort by score
-    sorted_profitable = dict(sorted(profitable.items(), key=lambda x: x[1]["score"], reverse=True))
-    
-    print(f"  ✅ {len(sorted_profitable)} profitable wallets found")
-    return sorted_profitable
+    sorted_p = dict(sorted(profitable.items(), key=lambda x: x[1]["score"], reverse=True))
+    print(f"  ✅ {len(sorted_p)} profitable wallets (early+active)")
+    return sorted_p
 
 
-def build_cluster(profitable, ca, token_name=""):
-    """Build cluster from profitable wallets"""
+def save_cluster(profitable, ca, token_info):
+    os.makedirs("data", exist_ok=True)
     cluster = {
         "token": ca,
-        "token_name": token_name,
+        "token_name": token_info.get("name", "?"),
         "created_at": datetime.now().isoformat(),
-        "wallets": {}
-    }
-    
-    for addr, data in profitable.items():
-        cluster["wallets"][addr] = {
-            "first_seen_block": data["first_block"],
-            "first_tx": data["first_tx"],
-            "swap_count": data["swap_count"],
-            "total_value_eth": data["total_value_eth"],
-            "nonce": data["nonce"],
-            "eth_balance": data["eth_balance"],
-            "score": data["score"],
-            "last_alert_block": 0
+        "wallets": {
+            a: {
+                "block": d["block"],
+                "tx": d["tx"],
+                "swaps": d["swaps"],
+                "value": d["value"],
+                "nonce": d["nonce"],
+                "eth": d["eth"],
+                "early": d.get("early", False),
+                "score": d["score"],
+                "last_alert": 0
+            } for a, d in profitable.items()
         }
-    
+    }
+    with open("data/cluster.json", "w") as f:
+        json.dump(cluster, f, indent=2)
     return cluster
 
 
-def save_cluster(cluster, filename="data/cluster.json"):
-    """Save cluster to file"""
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    with open(filename, "w") as f:
-        json.dump(cluster, f, indent=2)
-    print(f"\n💾 Cluster saved: {filename}")
-    return filename
-
-
-def load_cluster(filename="data/cluster.json"):
-    """Load cluster from file"""
-    try:
-        with open(filename) as f:
-            return json.load(f)
-    except:
-        return None
-
-
-def send_discord(message, webhook=None):
-    """Send Discord webhook alert"""
-    webhook = webhook or DISCORD_WEBHOOK
+def send_discord(msg, webhook):
     if not webhook:
-        print(f"  ⚠️ No webhook configured, skipping alert")
-        return False
-    
-    payload = json.dumps({"content": message})
-    result = subprocess.run(
+        return
+    subprocess.run(
         ["curl", "-s", "-X", "POST", webhook,
          "-H", "Content-Type: application/json",
-         "-d", payload,
-         "-H", "User-Agent: FnF-Radar/1.0"],
-        capture_output=True, text=True, timeout=10
+         "-d", json.dumps({"content": msg}),
+         "-H", "User-Agent: FnF/1.0"],
+        capture_output=True, timeout=10
     )
-    return result.returncode == 0
 
 
-def resolve_pool_token(pool_id):
-    """Try to resolve what token a v4 pool is swapping"""
-    # This would need to decode the pool ID or check the swap data
-    # For now return unknown
-    return "Unknown"
-
-
-def monitor_cluster(cluster_file="data/cluster.json", webhook=None, poll_seconds=3):
-    """Monitor cluster wallets for new buys"""
-    cluster = load_cluster(cluster_file)
-    if not cluster:
-        print(f"❌ No cluster found at {cluster_file}")
+def monitor(webhook=None, poll=3):
+    try:
+        with open("data/cluster.json") as f:
+            cluster = json.load(f)
+    except:
+        print("❌ No cluster.json. Build first: python3 cluster_builder.py <CA>")
         return
     
     wallets = set(cluster["wallets"].keys())
-    token_name = cluster.get("token_name", "?")
-    
-    print(f"\n🛡️ Cluster Monitor Started")
-    print(f"  Token: {token_name}")
+    print(f"\n🛡️ Monitor Started")
+    print(f"  Token: {cluster['token_name']}")
     print(f"  Wallets: {len(wallets)}")
-    print(f"  Poll: {poll_seconds}s")
-    print(f"  Webhook: {'ON' if webhook else 'OFF'}")
+    print(f"  Poll: {poll}s")
     
-    last_block = get_block()
-    print(f"  Block: {last_block}")
-    print(f"\n⏳ Watching for cluster activity...\n")
+    last = get_block()
+    print(f"  Block: {last}\n")
     
-    seen_txs = set()
-    alert_count = 0
+    seen = set()
+    alerts = 0
     
     while True:
         try:
-            current_block = get_block()
-            if current_block <= last_block:
-                time.sleep(poll_seconds)
+            cur = get_block()
+            if cur <= last:
+                time.sleep(poll)
                 continue
             
-            # Get ALL v4 swaps since last block
-            swap_logs = rpc("eth_getLogs", [{
-                "fromBlock": hex(last_block + 1),
-                "toBlock": hex(current_block),
+            # Get all v4 swaps
+            logs = rpc("eth_getLogs", [{
+                "fromBlock": hex(last + 1),
+                "toBlock": hex(cur),
                 "address": V4_POOL_MANAGER,
-                "topics": [None]  # All pools
+                "topics": [None]
             }]) or []
             
-            new_txs = 0
-            for log in swap_logs:
-                tx = log["transactionHash"]
-                if tx in seen_txs:
+            for l in logs:
+                tx = l["transactionHash"]
+                if tx in seen:
                     continue
-                seen_txs.add(tx)
-                new_txs += 1
+                seen.add(tx)
                 
-                # Get buyer
-                tx_data = get_tx(tx)
-                if not tx_data:
+                td = get_tx(tx)
+                if not td:
                     continue
                 
-                buyer = tx_data["from"].lower()
+                buyer = td["from"].lower()
                 if buyer not in wallets:
                     continue
                 
-                # ALERT! Cluster wallet just bought!
-                alert_count += 1
-                pool_id = log["topics"][1] if len(log.get("topics", [])) > 1 else "?"
-                block_num = int(log["blockNumber"], 16)
-                value_eth = int(tx_data.get("value", "0x0"), 16) / 1e18
+                alerts += 1
+                pool = l["topics"][1][:18] if len(l.get("topics", [])) > 1 else "?"
+                blk = int(l["blockNumber"], 16)
+                val = int(td.get("value", "0x0"), 16) / 1e18
+                score = cluster["wallets"][buyer].get("score", 0)
                 
                 msg = (
-                    f"🚨 **CLUSTER BUY #{alert_count}**\n"
+                    f"🔔 **CLUSTER BUY #{alerts}**\n"
                     f"Wallet: `{buyer}`\n"
-                    f"Pool: `{pool_id[:18]}...`\n"
-                    f"Block: {block_num}\n"
-                    f"Value: {value_eth:.4f} ETH\n"
-                    f"TX: https://robin.etherscan.io/tx/{tx}\n"
-                    f"Wallet score: {cluster['wallets'][buyer].get('score', '?')}"
+                    f"Score: {score} | Swaps: {cluster['wallets'][buyer].get('swaps', '?')}\n"
+                    f"Pool: `{pool}...`\n"
+                    f"Block: {blk} | Value: {val:.4f} ETH\n"
+                    f"https://robin.etherscan.io/tx/{tx}"
                 )
                 
-                print(f"🚨 ALERT: {buyer[:12]}... just swapped! (score: {cluster['wallets'][buyer].get('score', '?')})")
+                print(f"🔔 {buyer[:12]}... swapped! (score: {score})")
                 send_discord(msg, webhook)
-                
-                # Update last alert block
-                cluster["wallets"][buyer]["last_alert_block"] = block_num
             
-            if new_txs > 0 and alert_count == 0:
-                # Activity but no cluster hits
-                pass
-            
-            last_block = current_block
-            time.sleep(poll_seconds)
+            last = cur
+            time.sleep(poll)
             
         except KeyboardInterrupt:
-            print(f"\n\n📊 Session: {alert_count} alerts sent")
-            save_cluster(cluster, cluster_file)
-            print("💾 Cluster state saved")
+            print(f"\n\n📊 Session: {alerts} alerts")
             break
         except Exception as e:
-            print(f"  ⚠️ {e}")
-            time.sleep(poll_seconds)
+            time.sleep(poll)
 
 
 def main():
     if len(sys.argv) < 2:
-        print("FnF Cluster Builder & Monitor")
-        print("=" * 40)
-        print()
-        print("Build cluster from CA:")
-        print("  python cluster_builder.py <CA>")
-        print()
-        print("Start monitoring:")
-        print("  python cluster_builder.py monitor [webhook_url]")
-        print()
+        print("Usage:")
+        print("  python3 cluster_builder.py <CA>                  # Build cluster")
+        print("  python3 cluster_builder.py monitor [webhook]     # Start monitor")
         return
     
-    cmd = sys.argv[1]
-    
-    if cmd == "monitor":
-        webhook = sys.argv[2] if len(sys.argv) > 2 else DISCORD_WEBHOOK
-        monitor_cluster(webhook=webhook)
+    if sys.argv[1] == "monitor":
+        monitor(webhook=sys.argv[2] if len(sys.argv) > 2 else None)
         return
     
-    # Build cluster from CA
-    ca = cmd.lower()
+    ca = sys.argv[1].lower()
     if not ca.startswith("0x") or len(ca) != 42:
-        print("❌ Invalid address")
+        print("❌ Invalid CA")
         return
     
-    # Step 1: Find early buyers
-    buyers = find_early_buyers(ca)
+    buyers, price, info = find_early_buyers(ca)
     if not buyers:
         return
     
-    # Step 2: Filter profitable (EOAs with activity)
-    profitable = filter_profitable(buyers, min_swaps=3, min_eth=0.001)
+    profitable = check_10x_profit(buyers, info)
     if not profitable:
-        print("❌ No profitable wallets found")
+        print("❌ No 10x+ wallets found")
         return
     
-    # Step 3: Build cluster
-    token_name = ""
-    dex = curl_json(f"https://api.dexscreener.com/latest/dex/tokens/{ca}")
-    if dex and dex.get("pairs"):
-        token_name = f"{dex['pairs'][0]['baseToken']['name']} ({dex['pairs'][0]['baseToken']['symbol']})"
+    cluster = save_cluster(profitable, ca, info)
     
-    cluster = build_cluster(profitable, ca, token_name)
-    cluster_file = save_cluster(cluster)
-    
-    # Print summary
     print(f"\n{'='*50}")
-    print(f"📊 CLUSTER SUMMARY: {token_name}")
+    print(f"📊 CLUSTER: {info['name']}")
     print(f"{'='*50}")
-    print(f"Wallets: {len(cluster['wallets'])}")
-    print()
-    print("Top 10 by score:")
-    for i, (addr, data) in enumerate(list(cluster["wallets"].items())[:10]):
-        print(f"  {i+1}. {addr}")
-        print(f"     Score: {data['score']} | Swaps: {data['swap_count']} | ETH: {data['eth_balance']:.2f} | Nonce: {data['nonce']}")
+    print(f"Wallets: {len(cluster['wallets'])}\n")
     
-    print(f"\n▶️ Next: python cluster_builder.py monitor <webhook_url>")
+    for i, (a, d) in enumerate(list(cluster["wallets"].items())[:10]):
+        tag = "⭐" if d.get("early") else "  "
+        print(f"  {tag} {i+1}. {a}")
+        print(f"      Score: {d['score']} | Swaps: {d['swaps']} | ETH: {d['eth']:.2f} | Nonce: {d['nonce']}")
+    
+    print(f"\n▶️ python3 cluster_builder.py monitor <webhook>")
 
 
 if __name__ == "__main__":
