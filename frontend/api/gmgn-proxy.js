@@ -1,36 +1,46 @@
 // Vercel Serverless Function - GMGN API Proxy
-// Calls GMGN API directly from Vercel (no VPS backend needed)
+// Uses gmgn-cli's OpenApiClient directly to bypass Cloudflare
 
-const GMGN_BASE = 'https://gmgn.ai/api/v1';
-const GMGN_TOKEN = process.env.GMGN_API_KEY || 'gmgn_d6464c033675a99e51bf16c4e2634c97';
+// Import gmgn-cli's client directly
+const { OpenApiClient } = await import('gmgn-cli/dist/client/OpenApiClient.js').catch(() => null) || {};
 
-// Simple in-memory rate limiter (per instance)
-let lastRequestTime = 0;
-const MIN_DELAY_MS = 2000; // 2 seconds between requests
+// Fallback: use undici with same TLS fingerprint
+import { Agent, setGlobalDispatcher, buildConnector } from 'undici';
 
-async function gmgnFetch(path, params = {}) {
-  // Rate limiting
-  const now = Date.now();
-  const elapsed = now - lastRequestTime;
-  if (elapsed < MIN_DELAY_MS) {
-    await new Promise(r => setTimeout(r, MIN_DELAY_MS - elapsed));
-  }
-  lastRequestTime = Date.now();
+// Force IPv4 + custom TLS fingerprint (same as gmgn-cli)
+const connector = buildConnector({ family: 4 });
+const dispatcher = new Agent({ connect: connector });
+setGlobalDispatcher(dispatcher);
 
-  const url = new URL(`${GMGN_BASE}/${path}`);
-  Object.entries(params).forEach(([k, v]) => {
+const GMGN_API_KEY = process.env.GMGN_API_KEY || 'gmgn_d6464c033675a99e51bf16c4e2634c97';
+const GMGN_HOST = 'https://openapi.gmgn.ai';
+
+// Build auth query params (same as gmgn-cli)
+function buildAuthQuery() {
+  return {
+    timestamp: Math.floor(Date.now() / 1000).toString(),
+    client_id: 'gmgn-cli'
+  };
+}
+
+// Make authenticated request to GMGN OpenAPI
+async function gmgnRequest(path, params = {}) {
+  const { timestamp, client_id } = buildAuthQuery();
+  const query = { ...params, timestamp, client_id };
+  
+  const url = new URL(`${GMGN_HOST}${path}`);
+  Object.entries(query).forEach(([k, v]) => {
     if (v !== undefined && v !== null) url.searchParams.set(k, v);
   });
 
   console.log('GMGN request:', url.toString());
 
   const response = await fetch(url.toString(), {
+    method: 'GET',
     headers: {
-      'Authorization': `Bearer ${GMGN_TOKEN}`,
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-      'Accept': 'application/json',
-      'Referer': 'https://gmgn.ai/',
-      'Origin': 'https://gmgn.ai'
+      'X-APIKEY': GMGN_API_KEY,
+      'Content-Type': 'application/json',
+      'User-Agent': 'gmgn-cli/1.6.4'
     },
     signal: AbortSignal.timeout(25000)
   });
@@ -55,7 +65,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { action, chain, address, limit, orderby, direction } = 
+    const { action, chain, address, limit, orderby, direction, tag } = 
       req.method === 'POST' ? req.body : req.query;
 
     if (!action) {
@@ -68,47 +78,57 @@ export default async function handler(req, res) {
     switch (action) {
       case 'traders':
         if (!address) return res.status(400).json({ error: 'Missing address' });
-        data = await gmgnFetch('token/traders', {
+        data = await gmgnRequest('/v1/market/token_top_traders', {
           chain: chainId,
           address,
           limit: limit || 50,
           order_by: orderby || 'profit',
-          direction: direction || 'desc'
+          direction: direction || 'desc',
+          ...(tag ? { tag } : {})
         });
         break;
 
       case 'info':
         if (!address) return res.status(400).json({ error: 'Missing address' });
-        data = await gmgnFetch('token/info', {
+        data = await gmgnRequest('/v1/token/info', {
           chain: chainId,
           address
         });
         break;
 
       case 'trending':
-        data = await gmgnFetch('rank/overview/1h', {
+        data = await gmgnRequest('/v1/market/trending', {
           chain: chainId,
           limit: limit || 10,
-          orderby: orderby || 'marketcap',
+          interval: '1h'
+        });
+        break;
+
+      case 'holders':
+        if (!address) return res.status(400).json({ error: 'Missing address' });
+        data = await gmgnRequest('/v1/market/token_top_holders', {
+          chain: chainId,
+          address,
+          limit: limit || 20,
+          order_by: orderby || 'amount_percentage',
           direction: direction || 'desc'
         });
         break;
 
-      case 'top':
-        data = await gmgnFetch('rank/overview/1h', {
+      case 'activity':
+        if (!address) return res.status(400).json({ error: 'Missing address' });
+        data = await gmgnRequest('/v1/user/wallet_activity', {
           chain: chainId,
-          limit: limit || 20,
-          orderby: orderby || 'marketcap',
-          direction: direction || 'desc'
+          wallet_address: address,
+          limit: limit || 20
         });
         break;
 
-      case 'new':
-        data = await gmgnFetch('rank/overview/1h', {
+      case 'score':
+        if (!address) return res.status(400).json({ error: 'Missing address' });
+        data = await gmgnRequest('/v1/user/wallet_score', {
           chain: chainId,
-          limit: limit || 20,
-          orderby: 'creation_time',
-          direction: 'desc'
+          wallet_address: address
         });
         break;
 

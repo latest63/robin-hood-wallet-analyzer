@@ -13,6 +13,7 @@
     "@supabase/supabase-js": "^2.116.0",
     "@tanstack/react-query": "^5.62.7",
     "ethers": "^6.13.0",
+    "gmgn-cli": "^1.6.4",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
