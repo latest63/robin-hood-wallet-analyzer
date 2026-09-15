@@ -1,19 +1,14 @@
 // Vercel Serverless Function - GMGN API Proxy
-// Uses gmgn-cli's OpenApiClient directly to bypass Cloudflare
+// Uses undici with IPv4 forced connection (same TLS fingerprint as gmgn-cli)
 
-// Import gmgn-cli's client directly
-const { OpenApiClient } = await import('gmgn-cli/dist/client/OpenApiClient.js').catch(() => null) || {};
+import { Agent, buildConnector } from 'undici';
 
-// Fallback: use undici with same TLS fingerprint
-import { Agent, setGlobalDispatcher, buildConnector } from 'undici';
-
-// Force IPv4 + custom TLS fingerprint (same as gmgn-cli)
-const connector = buildConnector({ family: 4 });
-const dispatcher = new Agent({ connect: connector });
-setGlobalDispatcher(dispatcher);
-
-const GMGN_API_KEY = process.env.GMGN_API_KEY || 'gmgn_d6464c033675a99e51bf16c4e2634c97';
+const GMGN_API_KEY = process.env.GMGN_API_KEY || '';
 const GMGN_HOST = 'https://openapi.gmgn.ai';
+
+// Force IPv4 connections (same as gmgn-cli)
+const connector = buildConnector({ family: 4 });
+const agent = new Agent({ connect: connector });
 
 // Build auth query params (same as gmgn-cli)
 function buildAuthQuery() {
@@ -23,7 +18,7 @@ function buildAuthQuery() {
   };
 }
 
-// Make authenticated request to GMGN OpenAPI
+// Make authenticated request using undici directly
 async function gmgnRequest(path, params = {}) {
   const { timestamp, client_id } = buildAuthQuery();
   const query = { ...params, timestamp, client_id };
@@ -33,25 +28,33 @@ async function gmgnRequest(path, params = {}) {
     if (v !== undefined && v !== null) url.searchParams.set(k, v);
   });
 
-  console.log('GMGN request:', url.toString());
+  const requestUrl = url.toString();
+  console.log('GMGN request:', requestUrl);
 
-  const response = await fetch(url.toString(), {
+  const { statusCode, body } = await agent.request({
     method: 'GET',
+    path: `${url.pathname}${url.search}`,
+    origin: GMGN_HOST,
     headers: {
       'X-APIKEY': GMGN_API_KEY,
       'Content-Type': 'application/json',
-      'User-Agent': 'gmgn-cli/1.6.4'
-    },
-    signal: AbortSignal.timeout(25000)
+      'User-Agent': 'gmgn-cli/1.6.4',
+      'Accept': 'application/json'
+    }
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('GMGN error:', response.status, errorText.substring(0, 200));
-    throw new Error(`GMGN API error: ${response.status}`);
+  const chunks = [];
+  for await (const chunk of body) {
+    chunks.push(chunk);
+  }
+  const responseBody = Buffer.concat(chunks).toString();
+
+  if (statusCode !== 200) {
+    console.error('GMGN error:', statusCode, responseBody.substring(0, 200));
+    throw new Error(`GMGN API error: ${statusCode}`);
   }
 
-  return response.json();
+  return JSON.parse(responseBody);
 }
 
 export default async function handler(req, res) {
