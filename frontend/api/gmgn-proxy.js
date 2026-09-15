@@ -100,7 +100,7 @@ export default async function handler(req, res) {
         break;
 
       case 'trending':
-        data = await gmgnRequest('/v1/market/trending', {
+        data = await gmgnRequest('/v1/market/rank', {
           chain: chainId,
           limit: limit || 10,
           interval: '1h'
