@@ -1,10 +1,12 @@
 // Vercel Serverless Function to proxy GMGN API calls
-// This bypasses Cloudflare blocking from browser requests
+// Routes through VPS backend which uses gmgn-cli (bypasses Cloudflare)
+
+const VPS_BACKEND = 'http://43.131.63.160:8899'
 
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
   // Handle preflight
@@ -12,46 +14,37 @@ export default async function handler(req, res) {
     return res.status(200).end()
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
-
   try {
-    const GMGN_API_BASE = 'https://gmgn.ai/api/v1'
-    const envKey = ['GMGN', 'API', 'KEY'].join('_')
-    const apiKey = process.env[envKey]
-    const GMGN_API_KEY = apiKey || 'gmgn_d6464c033675a99e51bf16c4e2634c97'
-    
-    const { path, params } = req.body
-    
-    if (!path) {
-      return res.status(400).json({ error: 'Missing path parameter' })
+    const { action, chain, address, limit } = req.method === 'POST' ? req.body : req.query
+
+    if (!action) {
+      return res.status(400).json({ error: 'Missing action parameter' })
     }
 
-    // Build GMGN API URL
-    const url = new URL(`${GMGN_API_BASE}${path}`)
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, String(value))
-      })
+    let vpsUrl
+    if (action === 'traders') {
+      if (!address) return res.status(400).json({ error: 'Missing address' })
+      vpsUrl = `${VPS_BACKEND}/api/token/traders?chain=${chain || 'robinhood'}&address=${address}&limit=${limit || 20}`
+    } else if (action === 'info') {
+      if (!address) return res.status(400).json({ error: 'Missing address' })
+      vpsUrl = `${VPS_BACKEND}/api/token/info?chain=${chain || 'robinhood'}&address=${address}`
+    } else if (action === 'trending') {
+      vpsUrl = `${VPS_BACKEND}/api/market/trending?chain=${chain || 'robinhood'}&limit=${limit || 10}`
+    } else {
+      return res.status(400).json({ error: `Unknown action: ${action}` })
     }
 
-    console.log('Calling GMGN API:', url.toString())
+    console.log('Calling VPS:', vpsUrl)
 
-    // Call GMGN API
-    const response = await fetch(url.toString(), {
-      headers: {
-        'Authorization': 'Bearer ' + GMGN_API_KEY,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json',
-      },
+    const response = await fetch(vpsUrl, {
+      signal: AbortSignal.timeout(25000)
     })
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('GMGN API error:', response.status, errorText)
+      console.error('VPS error:', response.status, errorText)
       return res.status(response.status).json({ 
-        error: 'GMGN API error: ' + response.status, 
+        error: 'Backend error: ' + response.status, 
         details: errorText 
       })
     }

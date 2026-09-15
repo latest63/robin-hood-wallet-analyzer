@@ -1,22 +1,12 @@
 // GMGN API integration via Vercel Serverless Function proxy
-// Bypasses Cloudflare blocking from browser requests
+// Routes through VPS backend which uses gmgn-cli (bypasses Cloudflare)
 
-const VERCEL_API_BASE = '/api'
+const API_BASE = '/api/gmgn-proxy'
 
 export const scanToken = async (tokenAddress) => {
   try {
     // Get token info
-    const tokenResp = await fetch(`${VERCEL_API_BASE}/gmgn-proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        path: '/tokens/info',
-        params: {
-          chain: 'robinhood',
-          address: tokenAddress
-        }
-      })
-    })
+    const tokenResp = await fetch(`${API_BASE}?action=info&chain=robinhood&address=${tokenAddress}`)
     const tokenData = await tokenResp.json()
 
     if (!tokenData || tokenData.error) {
@@ -24,20 +14,7 @@ export const scanToken = async (tokenAddress) => {
     }
 
     // Get traders sorted by profit
-    const tradersResp = await fetch(`${VERCEL_API_BASE}/gmgn-proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        path: '/tokens/traders',
-        params: {
-          chain: 'robinhood',
-          address: tokenAddress,
-          order_by: 'profit',
-          direction: 'desc',
-          limit: 50
-        }
-      })
-    })
+    const tradersResp = await fetch(`${API_BASE}?action=traders&chain=robinhood&address=${tokenAddress}&limit=50`)
     const tradersData = await tradersResp.json()
 
     let traderList = []
@@ -69,18 +46,7 @@ export const scanToken = async (tokenAddress) => {
 
 export const getWalletActivity = async (walletAddress) => {
   try {
-    const resp = await fetch(`${VERCEL_API_BASE}/gmgn-proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        path: '/portfolio/activity',
-        params: {
-          chain: 'robinhood',
-          wallet: walletAddress,
-          limit: 10
-        }
-      })
-    })
+    const resp = await fetch(`${API_BASE}?action=activity&chain=robinhood&wallet=${walletAddress}&limit=10`)
     const data = await resp.json()
     return data?.list || []
   } catch (error) {
