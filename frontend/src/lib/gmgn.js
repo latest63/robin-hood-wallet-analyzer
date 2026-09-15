@@ -1,30 +1,51 @@
-// GMGN API integration
-// Replace gmgn-cli with direct API calls
+// GMGN API integration via Vercel Serverless Function proxy
+// Bypasses Cloudflare blocking from browser requests
 
-const GMGN_API_BASE = 'https://gmgn.ai/api/v1';
+const VERCEL_API_BASE = '/api'
 
 export const scanToken = async (tokenAddress) => {
   try {
     // Get token info
-    const tokenResp = await fetch(`${GMGN_API_BASE}/tokens/info?chain=robinhood&address=${tokenAddress}`);
-    const tokenData = await tokenResp.json();
-    
-    if (!tokenData.data) {
-      throw new Error('Token not found');
+    const tokenResp = await fetch(`${VERCEL_API_BASE}/gmgn-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: '/tokens/info',
+        params: {
+          chain: 'robinhood',
+          address: tokenAddress
+        }
+      })
+    })
+    const tokenData = await tokenResp.json()
+
+    if (!tokenData || tokenData.error) {
+      throw new Error(tokenData.error || 'Token not found')
     }
 
     // Get traders sorted by profit
-    const tradersResp = await fetch(
-      `${GMGN_API_BASE}/tokens/traders?chain=robinhood&address=${tokenAddress}&order_by=profit&direction=desc&limit=50`
-    );
-    const tradersData = await tradersResp.json();
+    const tradersResp = await fetch(`${VERCEL_API_BASE}/gmgn-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: '/tokens/traders',
+        params: {
+          chain: 'robinhood',
+          address: tokenAddress,
+          order_by: 'profit',
+          direction: 'desc',
+          limit: 50
+        }
+      })
+    })
+    const tradersData = await tradersResp.json()
 
-    let traderList = [];
-    if (tradersData.data && tradersData.data.list) {
-      traderList = tradersData.data.list
+    let traderList = []
+    if (tradersData && tradersData.list) {
+      traderList = tradersData.list
         .filter(t => {
-          const tags = t.tags || [];
-          return !tags.includes('sandwich_bot') && !tags.includes('sniper');
+          const tags = t.tags || []
+          return !tags.includes('sandwich_bot') && !tags.includes('sniper')
         })
         .map(t => ({
           wallet: t.address,
@@ -33,28 +54,37 @@ export const scanToken = async (tokenAddress) => {
           buys: t.buy_tx_count_cur || 0,
           tags: t.tags || [],
           selected: (t.profit || 0) > 1000
-        }));
+        }))
     }
 
     return {
-      token: tokenData.data,
+      token: tokenData,
       traders: traderList
-    };
+    }
   } catch (error) {
-    console.error('GMGN API Error:', error);
-    throw error;
+    console.error('GMGN API Error:', error)
+    throw error
   }
-};
+}
 
 export const getWalletActivity = async (walletAddress) => {
   try {
-    const resp = await fetch(
-      `${GMGN_API_BASE}/portfolio/activity?chain=robinhood&wallet=${walletAddress}&limit=10`
-    );
-    const data = await resp.json();
-    return data.data?.list || [];
+    const resp = await fetch(`${VERCEL_API_BASE}/gmgn-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: '/portfolio/activity',
+        params: {
+          chain: 'robinhood',
+          wallet: walletAddress,
+          limit: 10
+        }
+      })
+    })
+    const data = await resp.json()
+    return data?.list || []
   } catch (error) {
-    console.error('GMGN Activity Error:', error);
-    return [];
+    console.error('GMGN Activity Error:', error)
+    return []
   }
-};
+}
