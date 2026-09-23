@@ -41,10 +41,15 @@ export default function Scan() {
 
       setProgress('Parsing results...');
 
-      // Use real token name and symbol from API
+      // Use real token name and symbol from API if available, otherwise truncate address
+      const rawName = result.tokenName?.replace(/[\x00-\x1F]/g, '').trim();
+      const rawSymbol = result.tokenSymbol?.replace(/[\x00-\x1F]/g, '').trim();
+      const tokenName = rawName || result.token?.substring(2, 10) + '...';
+      const tokenSymbol = rawSymbol || 'TOKEN';
+
       setTokenInfo({
-        name: result.tokenName || result.token?.substring(2, 10) + '...',
-        symbol: result.tokenSymbol || 'TOKEN',
+        name: tokenName,
+        symbol: tokenSymbol,
         price: null,
         holders_count: result.uniqueWallets || 0,
         totalTransfers: result.totalTransfers || 0,
