@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
-import { Loader2, Scan, TrendingUp, Shield, Zap, BarChart3, Target, Bell, Search, Users, LineChart } from 'lucide-react';
+import { Loader2, Scan, TrendingUp, Shield, BarChart3, Target, Bell, Search, Users, LineChart } from 'lucide-react';
 
 export default function Landing() {
   const { isConnected, connectWallet, isReconnecting } = useWallet();

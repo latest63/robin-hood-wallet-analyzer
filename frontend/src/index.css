@@ -107,6 +107,7 @@
 }
 
 .hero-subtitle {
+  font-family: 'Inter', sans-serif;
   font-size: 18px;
   line-height: 1.6;
   color: var(--text-muted);
