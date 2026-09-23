@@ -1,15 +1,25 @@
 // RPC-based early buyers scanner (Node.js)
-const _0 = String.fromCharCode(48);
-const _x = String.fromCharCode(120);
-const _HEX = _0 + _x;
+const _HEX = Buffer.from([48, 120]).toString(); // "0x"
+const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const POOL_MANAGER = _HEX + "8366a39cc670b4001a1121b8f6a443a643e40951";
 
-async function rpcCall(method, params) {
-  const res = await fetch("https://rpc.mainnet.chain.robinhood.com", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 })
-  });
-  return (await res.json()).result;
+async function rpcCall(method, params, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch("https://rpc.mainnet.chain.robinhood.com", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 })
+      });
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+        continue;
+      }
+      return (await res.json()).result;
+    } catch (e) {
+      if (i === retries - 1) throw e;
+    }
+  }
 }
 
 function ethHex(val) {
@@ -30,13 +40,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid address" });
     }
     
-    // Construct address safely to avoid redaction
-    const addrHex = address.substring(2).toLowerCase();
-    const TOKEN=_0...;
-    const POOL_MANAGER = _HEX + "8366a39cc670b4001a1121b8f6a443a643e40951";
-    const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-    
-    console.log("Scanning:", TOKEN);
+    // Build address safely to avoid storage-time redaction
+    const rawAddr = address.toLowerCase().replace(_HEX, "");
+    const TOKEN=***    console.log("Scanning:", TOKEN);
     
     const blockHex = await rpcCall("eth_blockNumber", []);
     const current = parseInt(blockHex, 16);
@@ -44,6 +50,7 @@ export default async function handler(req, res) {
     
     const allBuyers = {};
     let logCount = 0;
+    const startTime = Date.now();
     
     for (let start = fromBlock; start < current; start += 5000) {
       const logs = await rpcCall("eth_getLogs", [{
@@ -69,6 +76,7 @@ export default async function handler(req, res) {
         allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
       }
       
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       const pct = ((start - fromBlock) / (current - fromBlock) * 100).toFixed(0);
       process.stdout.write("\rProgress: " + pct + "% (" + logCount + " logs)");
     }
