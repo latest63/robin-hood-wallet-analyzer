@@ -31,7 +31,7 @@
 .landing .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
 }
 
 .logo-text {
@@ -516,7 +516,7 @@ h2, h3 {
   letter-spacing: 0.05em;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
 }
 
 .logo img {
@@ -571,8 +571,8 @@ h2, h3 {
   background: rgba(16, 9, 5, 0.95);
   border: 1px solid rgba(42, 26, 16, 0.8);
   border-radius: 20px;
-  padding: 28px;
-  margin-bottom: 20px;
+  padding: 32px;
+  margin-bottom: 24px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(12px);
   transition: all 0.3s ease;
