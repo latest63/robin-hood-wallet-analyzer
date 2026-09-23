@@ -2,7 +2,7 @@
    FnF Radar - Modern Dark Theme
    =================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@500;700&display=swap');
 
 :root {
   --bg: #0d0806;
@@ -44,6 +44,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+h1 {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+h2, h3 {
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .app {
   min-height: 100vh;
   display: flex;
@@ -68,14 +81,24 @@ body {
 }
 
 .logo {
+  font-family: 'Orbitron', sans-serif;
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 700;
+  text-decoration: none;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.logo-fnf {
   background: var(--accent-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  text-decoration: none;
-  letter-spacing: -0.5px;
-  filter: drop-shadow(0 0 12px rgba(249, 115, 22, 0.6));
+}
+
+.logo-radar {
+  color: #ffffff;
 }
 
 .nav-links {

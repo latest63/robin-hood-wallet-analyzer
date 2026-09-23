@@ -86,7 +86,8 @@ function Navbar() {
   return (
     <nav className="navbar">
       <Link to="/" className="logo" onClick={close}>
-        ⚡ FNF Radar
+        <span className="logo-fnf">fnf</span>
+        <span className="logo-radar">radar</span>
       </Link>
 
       {!isAuth && (
