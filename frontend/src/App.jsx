@@ -11,6 +11,7 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Scan from "./pages/Scan";
 import ClusterDetail from "./pages/ClusterDetail";
+import Landing from "./pages/Landing";
 import "./index.css";
 
 // Robin Hood Chain configuration
@@ -80,8 +81,10 @@ function Navbar() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
 
-  const isAuth = location.pathname === "/auth";
+  const isLanding = location.pathname === "/";
   const close = () => setOpen(false);
+
+  if (isLanding) return null;
 
   return (
     <nav className="navbar">
@@ -91,26 +94,22 @@ function Navbar() {
         <span className="logo-radar">radar</span>
       </Link>
 
-      {!isAuth && (
-        <>
-          <button className="menu-toggle" onClick={() => setOpen(!open)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer' }}>
-            {open ? <X size={20} /> : <Menu size={20} />}
-          </button>
+      <button className="menu-toggle" onClick={() => setOpen(!open)} style={{ background: 'none', border: 'none', color: 'var(--text)', cursor: 'pointer' }}>
+        {open ? <X size={20} /> : <Menu size={20} />}
+      </button>
 
-          <div className={`nav-links ${open ? "open" : ""}`}>
-            <Link to="/dashboard" onClick={close}>Dashboard</Link>
-            <Link to="/scan" onClick={close}>Scan</Link>
+      <div className={`nav-links ${open ? "open" : ""}`}>
+        <Link to="/dashboard" onClick={close}>Dashboard</Link>
+        <Link to="/scan" onClick={close}>Scan</Link>
 
-            <div className="nav-connect-widget">
-              <ConnectButton
-                accountStatus="avatar"
-                chainStatus="icon"
-                showBalance={false}
-              />
-            </div>
-          </div>
-        </>
-      )}
+        <div className="nav-connect-widget">
+          <ConnectButton
+            accountStatus="avatar"
+            chainStatus="icon"
+            showBalance={false}
+          />
+        </div>
+      </div>
     </nav>
   );
 }
@@ -126,7 +125,7 @@ export default function App() {
                 <Navbar />
                 <main className="main">
                   <Routes>
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/" element={<Landing />} />
                     <Route path="/auth" element={<Auth />} />
                     <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                     <Route path="/scan" element={<ProtectedRoute><Scan /></ProtectedRoute>} />
