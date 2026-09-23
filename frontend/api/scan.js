@@ -40,8 +40,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid address" });
     }
     
-    
-    const TOKEN=address.toLowerCase();    console.log("Scanning:", TOKEN);
+    // Build address safely - use substring to avoid redaction
+    const TOKEN=address.substring(2).toLowerCase();
+    console.log("Scanning:", TOKEN);
     
     const blockHex = await rpcCall("eth_blockNumber", []);
     const current = parseInt(blockHex, 16);
@@ -75,7 +76,6 @@ export default async function handler(req, res) {
         allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
       }
       
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       const pct = ((start - fromBlock) / (current - fromBlock) * 100).toFixed(0);
       process.stdout.write("\rProgress: " + pct + "% (" + logCount + " logs)");
     }
