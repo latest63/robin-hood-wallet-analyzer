@@ -1,18 +1,32 @@
-// Vercel Serverless Function - Early Buyers Scan (RPC-based)
+// RPC-based early buyers scanner (Node.js - no Python dependency)
 // Scans token transfers via RPC to find PoolManager distributions
 
-import { execSync } from 'child_process';
-import { join } from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+const RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
+const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+async function rpcCall(method, params) {
+  try {
+    const res = await fetch(RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
+    });
+    const data = await res.json();
+    return data.result;
+  } catch (e) {
+    console.error('RPC error:', e.message);
+    return null;
+  }
+}
 
-const SCRIPT_PATH = join(__dirname, '../../scan_early_buyers.py');
+function ethHex(val) {
+  const h = val.toString(16);
+  return '0x' + (h.length % 2 ? '0' : '') + h;
+}
 
 export default async function handler(req, res) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -28,71 +42,112 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing or invalid contract address' });
     }
 
-    // Run the Python scanner with timeout
-    const result = execSync(
-      `python3 "${SCRIPT_PATH}" "${address}"`,
-      { encoding: 'utf8', timeout: 90000 }
-    );
+    const TOKEN = address.toLowerCase().startsWith('0x') ? address.toLowerCase() : '0x' + address.toLowerCase();
+    console.log(`Scanning token: ${TOKEN}`);
 
-    // Parse output into structured data
-    const lines = result.split('\n').filter(l => l.trim());
-    const scan = {
-      token: null,
-      totalTransfers: 0,
-      uniqueWallets: 0,
-      pmDistribution: [],
-      topBuyers: [],
-      earlyBuyers: []
-    };
+    // Get current block
+    const blockHex = await rpcCall("eth_blockNumber", []);
+    if (!blockHex) {
+      return res.status(500).json({ error: 'Failed to get current block' });
+    }
+    const current = parseInt(blockHex, 16);
+    const fromBlock = Math.max(current - 500000, 69200000);
 
-    let section = null;
-    
-    for (const line of lines) {
-      // Token line
-      if (line.startsWith('Token:')) {
-        scan.token = line.replace('Token:', '').trim();
-      }
-      // Stats lines
-      else if (line.startsWith('Total transfers:')) {
-        scan.totalTransfers = parseInt(line.replace('Total transfers:', '').trim()) || 0;
-      }
-      else if (line.startsWith('Unique wallets:')) {
-        scan.uniqueWallets = parseInt(line.replace('Unique wallets:', '').trim()) || 0;
-      }
-      // Section headers
-      else if (line.includes('POOLMANAGER DISTRIBUTION')) {
-        section = 'pmDistribution';
-      }
-      else if (line.includes('TOP BUYERS')) {
-        section = 'topBuyers';
-      }
-      else if (line.includes('EARLY BUYERS')) {
-        section = 'earlyBuyers';
-      }
-      // Data lines starting with "  0x"
-      else if (line.match(/^\s+0x[a-f0-9]+\s+\|/)) {
-        const parts = line.trim().split('|');
-        if (parts.length >= 3) {
-          const wallet = parts[0].trim();
-          const amount = parseFloat(parts[1].trim().replace(/,/g, '')) || 0;
-          const blockMatch = parts[2].match(/blk=(\d+)/);
-          const block = blockMatch ? parseInt(blockMatch[1]) : 0;
-          
-          const entry = { wallet, amount, block };
-          
-          if (section === 'pmDistribution') scan.pmDistribution.push(entry);
-          else if (section === 'topBuyers') scan.topBuyers.push(entry);
-          else if (section === 'earlyBuyers') scan.earlyBuyers.push(entry);
+    console.log(`Scanning blocks ${fromBlock} to ${current}`);
+
+    const allBuyers = {};
+    const chunkSize = 10000;
+    let logCount = 0;
+    const startTime = Date.now();
+
+    for (let start = fromBlock; start < current; start += chunkSize) {
+      const end = Math.min(start + chunkSize, current);
+      
+      const logs = await rpcCall("eth_getLogs", [{
+        fromBlock: ethHex(start),
+        toBlock: ethHex(end),
+        address: TOKEN,
+        topics: [TRANSFER_TOPIC]
+      }]);
+
+      if (!logs || logs.length === 0) continue;
+      
+      logCount += logs.length;
+
+      for (const log of logs) {
+        const topics = log.topics || [];
+        if (topics.length < 3) continue;
+
+        const fromAddr = '0x' + topics[1].substring(26).toLowerCase();
+        const toAddr = '0x' + topics[2].substring(26).toLowerCase();
+        const amount = BigInt('0x' + (log.data || '0x').substring(2));
+        const blockNum = parseInt(log.blockNumber, 16);
+
+        if (toAddr === ZERO_ADDR || toAddr === TOKEN) continue;
+
+        if (!allBuyers[toAddr]) {
+          allBuyers[toAddr] = {
+            firstBlock: blockNum,
+            totalReceived: 0n,
+            txCount: 0,
+            sources: {}
+          };
         }
+        allBuyers[toAddr].totalReceived += amount;
+        allBuyers[toAddr].txCount += 1;
+        if (!allBuyers[toAddr].sources[fromAddr]) {
+          allBuyers[toAddr].sources[fromAddr] = 0;
+        }
+        allBuyers[toAddr].sources[fromAddr] += 1;
       }
+
+      const elapsed = Date.now() - startTime;
+      const pct = ((start - fromBlock) / (current - fromBlock) * 100).toFixed(1);
+      console.log(`Progress: ${pct}% (${logCount.toLocaleString()} logs)`);
     }
 
-    return res.status(200).json(scan);
+    const sortedBuyers = Object.entries(allBuyers)
+      .sort((a, b) => a[1].firstBlock - b[1].firstBlock);
+
+    const pmBuyers = sortedBuyers.filter(([addr, info]) => 
+      info.sources[POOL_MANAGER] > 0
+    );
+    const pmTotal = pmBuyers.reduce((sum, [, info]) => sum + info.totalReceived, 0n);
+
+    const result = {
+      token: TOKEN,
+      totalTransfers: logCount,
+      uniqueWallets: sortedBuyers.length,
+      pmDistribution: pmBuyers.slice(0, 20).map(([addr, info]) => ({
+        wallet: addr,
+        amount: Number(info.totalReceived) / 1e18,
+        block: info.firstBlock
+      })),
+      topBuyers: sortedBuyers
+        .sort((a, b) => b[1].totalReceived - a[1].totalReceived)
+        .slice(0, 20)
+        .map(([addr, info]) => ({
+          wallet: addr,
+          amount: Number(info.totalReceived) / 1e18,
+          block: info.firstBlock,
+          txns: info.txCount,
+          isPM: !!info.sources[POOL_MANAGER]
+        })),
+      earlyBuyers: sortedBuyers.slice(0, 20).map(([addr, info]) => ({
+        wallet: addr,
+        amount: Number(info.totalReceived) / 1e18,
+        block: info.firstBlock,
+        isPM: !!info.sources[POOL_MANAGER]
+      }))
+    };
+
+    console.log(`Scan complete in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+    return res.status(200).json(result);
   } catch (error) {
-    console.error('Scan error:', error.message);
+    console.error('Scan error:', error);
     return res.status(500).json({ 
       error: error.message,
-      stdout: error.stdout?.substring(0, 1000) || undefined 
+      stdout: error.stack?.substring(0, 1000) 
     });
   }
 }
