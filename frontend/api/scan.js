@@ -85,6 +85,7 @@ export default async function handler(req, res) {
     }
     
     console.log("\nDone. Unique wallets:", Object.keys(allBuyers).length);
+    console.log("Done. Unique wallets:", Object.keys(allBuyers).length);
     
     const sorted = Object.entries(allBuyers)
       .sort((a, b) => a[1].firstBlock - b[1].firstBlock);
@@ -95,12 +96,12 @@ export default async function handler(req, res) {
       token: TOKEN,
       totalTransfers: logCount,
       uniqueWallets: sorted.length,
-      pmDistribution: pmBuyers.slice(0, 20).map(([addr, info]) => ({
+      pmDistribution: (pmBuyers || []).slice(0, 20).map(([addr, info]) => ({
         wallet: addr,
         amount: Number(info.total) / 1e18,
         block: info.firstBlock
       })),
-      earlyBuyers: sorted.slice(0, 20).map(([addr, info]) => ({
+      earlyBuyers: (sorted || []).slice(0, 20).map(([addr, info]) => ({
         wallet: addr,
         amount: Number(info.total) / 1e18,
         block: info.firstBlock
