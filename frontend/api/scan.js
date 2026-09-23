@@ -1,5 +1,8 @@
 // RPC-based early buyers scanner (Node.js)
 const _HEX = Buffer.from([48, 120]).toString(); // "0x"
+const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const POOL_MANAGER = _HEX + "8366a39cc670b4001a1121b8f6a443a643e40951";
+const ZERO_ADDR = _HEX + "0000000000000000000000000000000000000000";
 
 async function rpcCall(method, params) {
   const res = await fetch("https://rpc.mainnet.chain.robinhood.com", {
@@ -28,10 +31,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid address" });
     }
     
-    const TOKEN=***    const POOL_MANAGER = _HEX + "8366a39cc670b4001a1121b8f6a443a643e40951";
-    const ZERO_ADDR = _HEX + "0000000000000000000000000000000000000000";
-    const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-    
+    const TOKEN=addres...toLowerCase();
     console.log("Scanning:", TOKEN);
     
     const blockHex = await rpcCall("eth_blockNumber", []);
@@ -40,6 +40,7 @@ export default async function handler(req, res) {
     
     const allBuyers = {};
     let logCount = 0;
+    const startTime = Date.now();
     
     for (let start = fromBlock; start < current; start += 5000) {
       const logs = await rpcCall("eth_getLogs", [{
