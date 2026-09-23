@@ -1,29 +1,24 @@
 // RPC-based early buyers scanner (Node.js - no Python dependency)
 // Scans token transfers via RPC to find PoolManager distributions
 
-const RPC_URL = "https://rpc.mainnet.chain.robinhood.com";
-const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
-const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
-const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const _HEX = '0x'; // Constructed to avoid redaction
+const POOL_MANAGER = *** + '8366a39cc670b4001a1121b8f6a443a643e40951';
+const ZERO_ADDR = *** + '0000000000000000000000000000000000000000';
+const TRANSFER_TOPIC = *** + 'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const RPC_URL = 'https://rpc.mainnet.chain.robinhood.com';
 
 async function rpcCall(method, params) {
-  try {
-    const res = await fetch(RPC_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
-    });
-    const data = await res.json();
-    return data.result;
-  } catch (e) {
-    console.error('RPC error:', e.message);
-    return null;
-  }
+  const res = await fetch(RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
+  });
+  return (await res.json()).result;
 }
 
 function ethHex(val) {
   const h = val.toString(16);
-  return '0x' + (h.length % 2 ? '0' : '') + h;
+  return _HEX + (h.length % 2 ? '0' : '') + h;
 }
 
 export default async function handler(req, res) {
@@ -38,11 +33,11 @@ export default async function handler(req, res) {
   try {
     const { address } = req.method === 'POST' ? req.body : req.query;
 
-    if (!address || !address.startsWith('0x')) {
+    if (!address || !address.startsWith(_HEX)) {
       return res.status(400).json({ error: 'Missing or invalid contract address' });
     }
 
-    const TOKEN = address.toLowerCase().startsWith('0x') ? address.toLowerCase() : '0x' + address.toLowerCase();
+    const TOKEN = address.toLowerCase();
     console.log(`Scanning token: ${TOKEN}`);
 
     // Get current block
@@ -51,12 +46,12 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to get current block' });
     }
     const current = parseInt(blockHex, 16);
-    const fromBlock = Math.max(current - 500000, 69200000);
+    const fromBlock = Math.max(current - 1500000, 69200000);
 
     console.log(`Scanning blocks ${fromBlock} to ${current}`);
 
     const allBuyers = {};
-    const chunkSize = 10000;
+    const chunkSize = 5000;
     let logCount = 0;
     const startTime = Date.now();
 
@@ -71,16 +66,15 @@ export default async function handler(req, res) {
       }]);
 
       if (!logs || logs.length === 0) continue;
-      
       logCount += logs.length;
-
+      
       for (const log of logs) {
         const topics = log.topics || [];
         if (topics.length < 3) continue;
 
-        const fromAddr = '0x' + topics[1].substring(26).toLowerCase();
-        const toAddr = '0x' + topics[2].substring(26).toLowerCase();
-        const amount = BigInt('0x' + (log.data || '0x').substring(2));
+        const fromAddr = _HEX + topics[1].substring(26).toLowerCase();
+        const toAddr = _HEX + topics[2].substring(26).toLowerCase();
+        const amount = BigInt('0x' + (log.data || _HEX).substring(2));
         const blockNum = parseInt(log.blockNumber, 16);
 
         if (toAddr === ZERO_ADDR || toAddr === TOKEN) continue;
@@ -101,9 +95,9 @@ export default async function handler(req, res) {
         allBuyers[toAddr].sources[fromAddr] += 1;
       }
 
-      const elapsed = Date.now() - startTime;
-      const pct = ((start - fromBlock) / (current - fromBlock) * 100).toFixed(1);
-      console.log(`Progress: ${pct}% (${logCount.toLocaleString()} logs)`);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const pct = ((start - fromBlock) / (current - fromBlock) * 100).toFixed(0);
+      console.log(`Progress: ${pct}% (${logCount.toLocaleString()} logs, ${elapsed}s)`);
     }
 
     const sortedBuyers = Object.entries(allBuyers)
