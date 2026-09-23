@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     
     // Build address safely to avoid storage-time redaction
     const rawAddr = address.toLowerCase().replace(_HEX, "");
-    const TOKEN=***    console.log("Scanning:", TOKEN);
+    const TOKEN=addres...toLowerCase();    console.log("Scanning:", TOKEN);
     
     const blockHex = await rpcCall("eth_blockNumber", []);
     const current = parseInt(blockHex, 16);
