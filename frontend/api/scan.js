@@ -40,9 +40,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid address" });
     }
     
-    // Build address safely to avoid storage-time redaction
-    const rawAddr = address.toLowerCase().replace(_HEX, "");
-    const TOKEN=addres...toLowerCase();    console.log("Scanning:", TOKEN);
+    
+    const TOKEN=address.toLowerCase();    console.log("Scanning:", TOKEN);
     
     const blockHex = await rpcCall("eth_blockNumber", []);
     const current = parseInt(blockHex, 16);
