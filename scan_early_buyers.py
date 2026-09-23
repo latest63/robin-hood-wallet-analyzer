@@ -34,6 +34,10 @@ def eth_hex(val):
     return _HEX + h if len(h) % 2 else _HEX + '0' + h
 
 
+def trun(addr):
+    return f"{addr[:10]}...{addr[-10:]}" if len(addr) > 20 else addr
+
+
 def main():
     if len(sys.argv) < 2:
         print(f"Usage: python3 {sys.argv[0]} <contract_address>")
@@ -90,19 +94,19 @@ def main():
         print(f"\n=== POOLMANAGER DISTRIBUTION ({len(pm_buyers)} wallets) ===")
         print(f"Total distributed: {pm_total/1e18:,.2f}")
         print()
-        for addr, info in pm_buyers[:30]:
-            print(f"  {addr} | {info['total_received']/1e18:>20,.2f} | blk={info['first_block']:,}")
+        for addr, info in pm_buyers[:20]:
+            print(f"  {trun(addr)} | {info['total_received']/1e18:>20,.2f} | blk={info['first_block']:,}")
 
     print(f"\n=== TOP BUYERS (by total received) ===")
     by_amount = sorted(sorted_buyers, key=lambda x: x[1]["total_received"], reverse=True)
-    for addr, info in by_amount[:30]:
+    for addr, info in by_amount[:20]:
         src_label = "PM" if _POOL_MANAGER in info["sources"] else ""
-        print(f"  {addr} | {info['total_received']/1e18:>20,.2f} | txns={info['tx_count']} {src_label}")
+        print(f"  {trun(addr)} | {info['total_received']/1e18:>20,.2f} | txns={info['tx_count']} {src_label}")
 
     print(f"\n=== EARLY BUYERS (by block) ===")
-    for addr, info in sorted_buyers[:30]:
+    for addr, info in sorted_buyers[:20]:
         src_label = "PM" if _POOL_MANAGER in info["sources"] else ""
-        print(f"  {addr} | {info['total_received']/1e18:>20,.2f} | blk={info['first_block']:,} {src_label}")
+        print(f"  {trun(addr)} | {info['total_received']/1e18:>20,.2f} | blk={info['first_block']:,} {src_label}")
 
 
 if __name__ == "__main__":
