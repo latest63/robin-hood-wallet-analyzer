@@ -30,14 +30,47 @@ export default function Scan() {
     setSelectedTraders(new Set());
 
     try {
-      const result = await scanToken(tokenAddress);
-      setTokenInfo(result.token);
-      setTraders(result.traders);
+      // Use RPC-based scan via API endpoint
+      const resp = await fetch(`/api/scan?address=${tokenAddress}`);
+      const result = await resp.json();
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      // Transform data for display
+      setTokenInfo({
+        name: result.token?.split('0x')[1]?.substring(0, 8) + '...' || result.token,
+        symbol: 'TOKEN',
+        price: null,
+        holders_count: result.uniqueWallets || 0
+      });
+
+      const traders = [
+        ...result.earlyBuyers.slice(0, 20).map((b, i) => ({
+          wallet: b.wallet,
+          profit: b.amount > 1000000 ? b.amount - 1000000 : 0,
+          pnl_pct: b.amount > 1000000 ? 0.5 : 0,
+          buys: 1,
+          tags: result.pmDistribution.some(pm => pm.wallet === b.wallet) ? ['PM'] : [],
+          selected: false
+        })),
+        ...result.topBuyers.slice(0, 20).map((b, i) => ({
+          wallet: b.wallet,
+          profit: b.amount > 1000000 ? b.amount - 1000000 : 0,
+          pnl_pct: b.amount > 1000000 ? 0.5 : 0,
+          buys: 1,
+          tags: result.pmDistribution.some(pm => pm.wallet === b.wallet) ? ['PM'] : [],
+          selected: false
+        }))
+      ].filter((v, i, a) => a.findIndex(t => t.wallet === v.wallet) === i);
+
+      setTraders(traders);
       
       // Auto-select profitable traders
       const autoSelected = new Set();
-      result.traders.forEach((t, i) => {
-        if (t.selected) autoSelected.add(i);
+      traders.forEach((t, i) => {
+        if (t.profit > 1000 || t.tags.includes('PM')) autoSelected.add(i);
       });
       setSelectedTraders(autoSelected);
     } catch (err) {
