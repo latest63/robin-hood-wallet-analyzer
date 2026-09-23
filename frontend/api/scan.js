@@ -106,27 +106,40 @@ export default async function handler(req, res) {
         to: TOKEN,
         data: _HEX + "06fdde03"
       }, "latest"]);
+      console.log('nameResult:', nameResult);
       if (nameResult) {
         // ERC20 name() returns ABI-encoded string:
         // 0x (2) + offset(64) + length(64) + string bytes
         const fullHex = nameResult.slice(2); // skip 0x
+        console.log('fullHex length:', fullHex.length);
+        console.log('fullHex sample:', fullHex.slice(0, 150));
+        const offset = parseInt(fullHex.slice(0, 64), 16);
         const length = parseInt(fullHex.slice(64, 128), 16);
+        console.log('offset:', offset, 'length:', length);
         const strHex = fullHex.slice(128, 128 + length * 2);
+        console.log('strHex:', strHex);
         tokenName = Buffer.from(strHex, 'hex').toString('utf8');
+        console.log('tokenName:', tokenName);
       }
-    } catch(e) {}
+    } catch(e) {
+      console.error('Error fetching name:', e.message);
+    }
     try {
       const symResult = await rpcCall("eth_call", [{
         to: TOKEN,
         data: _HEX + "95d89b41"
       }, "latest"]);
+      console.log('symResult:', symResult);
       if (symResult) {
         const fullHex = symResult.slice(2);
         const length = parseInt(fullHex.slice(64, 128), 16);
         const strHex = fullHex.slice(128, 128 + length * 2);
         tokenSymbol = Buffer.from(strHex, 'hex').toString('utf8');
+        console.log('tokenSymbol:', tokenSymbol);
       }
-    } catch(e) {}
+    } catch(e) {
+      console.error('Error fetching symbol:', e.message);
+    }
 
     return res.status(200).json({
       token: TOKEN,
