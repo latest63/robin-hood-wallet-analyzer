@@ -88,7 +88,13 @@ h2, h3 {
   letter-spacing: 0.05em;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 10px;
+}
+
+.logo img {
+  height: 32px;
+  width: auto;
+  filter: drop-shadow(0 0 8px rgba(249, 115, 22, 0.4));
 }
 
 .logo-fnf {
@@ -134,19 +140,19 @@ h2, h3 {
 
 /* Cards */
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: rgba(16, 9, 5, 0.95);
+  border: 1px solid rgba(42, 26, 16, 0.8);
   border-radius: 20px;
-  padding: 24px;
+  padding: 28px;
   margin-bottom: 20px;
-  box-shadow: var(--card-shadow);
-  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
   transition: all 0.3s ease;
 }
 
 .card:hover {
-  border-color: var(--border-light);
-  box-shadow: var(--card-shadow), 0 0 0 1px var(--border-light);
+  border-color: rgba(61, 37, 24, 0.9);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
 }
 
 .card-glow {
@@ -338,10 +344,10 @@ h2, h3 {
 
 /* Wallet Cards */
 .wallet-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: rgba(16, 9, 5, 0.95);
+  border: 1px solid rgba(42, 26, 16, 0.8);
   border-radius: 16px;
-  padding: 16px;
+  padding: 18px 20px;
   transition: all 0.3s ease;
 }
 
@@ -538,10 +544,10 @@ h2, h3 {
 
 /* Search Box */
 .search-box {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  background: rgba(16, 9, 5, 0.95);
+  border: 1px solid rgba(42, 26, 16, 0.8);
   border-radius: 16px;
-  padding: 16px;
+  padding: 20px;
   margin-bottom: 20px;
 }
 
