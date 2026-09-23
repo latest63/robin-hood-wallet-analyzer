@@ -450,7 +450,7 @@ export default function Scan() {
           <Search size={48} style={{ color: 'var(--text-dim)', marginBottom: 16 }} />
           <p style={{ fontSize: 16, color: 'var(--text)' }}>Scan any token on Robin Hood Chain</p>
           <p className="text-sm text-muted mt-2">
-            Enter a contract address to discover early buyers and PoolManager distribution
+            Enter a contract address to discover early buyers
           </p>
         </div>
       )}
