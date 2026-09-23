@@ -35,7 +35,7 @@ def eth_hex(val):
 
 
 def trun(addr):
-    return f"{addr[:10]}...{addr[-10:]}" if len(addr) > 20 else addr
+    return addr
 
 
 def main():
