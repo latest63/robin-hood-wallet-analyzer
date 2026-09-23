@@ -107,18 +107,12 @@ export default async function handler(req, res) {
         data: _HEX + "06fdde03"
       }, "latest"]);
       if (nameResult) {
-        // Debug: log the raw result length
-        console.log('Name result length:', nameResult.length);
-        console.log('First 140 chars:', nameResult.slice(0, 140));
         // ERC20 name() returns: 0x + offset(64 chars) + length(64 chars) + bytes
-        // Data starts at char 130 (after 0x + 64 + 64)
-        const dataHex = nameResult.slice(130);
-        console.log('Data hex:', dataHex);
+        // Data starts at char 134 (after 0x + 64 + 64)
+        const dataHex = nameResult.slice(134);
         const length = parseInt(dataHex.slice(0, 64), 16);
-        console.log('Parsed length:', length);
         const strHex = dataHex.slice(64, 64 + length * 2);
         tokenName = Buffer.from(strHex, 'hex').toString('utf8');
-        console.log('Token name:', tokenName);
       }
     } catch(e) {}
     try {
