@@ -3,7 +3,7 @@ const _HEX = Buffer.from([48, 120]).toString(); // "0x"
 const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const POOL_MANAGER = _HEX + "8366a39cc670b4001a1121b8f6a443a643e40951";
 
-async function rpcCall(method, params, retries = 3) {
+async function rpcCall(method, params, retries = 5) {
   for (let i = 0; i < retries; i++) {
     try {
       const res = await fetch("https://rpc.mainnet.chain.robinhood.com", {
@@ -12,12 +12,15 @@ async function rpcCall(method, params, retries = 3) {
         body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 })
       });
       if (res.status === 429) {
-        await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+        const delay = 3000 * (i + 1);
+        console.log(`Rate limited, waiting ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
         continue;
       }
       return (await res.json()).result;
     } catch (e) {
       if (i === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, 1000));
     }
   }
 }
@@ -50,7 +53,7 @@ export default async function handler(req, res) {
     
     const blockHex = await rpcCall("eth_blockNumber", []);
     const current = parseInt(blockHex, 16);
-    const fromBlock = Math.max(current - 1500000, 69200000);
+    const fromBlock = Math.max(current - 500000, 69200000); // Smaller range for Vercel
     
     const allBuyers = {};
     let logCount = 0;
