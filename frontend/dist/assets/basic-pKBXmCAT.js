@@ -1,4 +1,4 @@
-import{s as e,t}from"./rolldown-runtime-BcKkbAw3.js";import{i as n,l as r,n as i,o as a,t as o}from"./lit-BUxpUABm.js";import{a as s,c,i as l,n as u,o as d,r as f,s as p,t as ee}from"./wui-text-C4A9tNwD.js";import{C as m,D as h,E as g,N as te,O as ne,_,a as v,b as y,c as b,d as re,h as ie,k as ae,m as x,n as oe,r as S,v as se,w as ce,x as C,y as w}from"./ConstantsUtil-BS5GcbdZ.js";import{f as le,p as ue}from"./core-B0sx0Wrl.js";var de=r`
+import{s as e,t}from"./rolldown-runtime-BcKkbAw3.js";import{i as n,l as r,n as i,o as a,t as o}from"./lit-BUxpUABm.js";import{a as s,c,i as l,n as u,o as d,r as f,s as p,t as ee}from"./wui-text-BtMBTkSB.js";import{C as m,D as h,E as g,N as te,O as ne,_,a as v,b as y,c as b,d as re,h as ie,k as ae,m as x,n as oe,r as S,v as se,w as ce,x as C,y as w}from"./ConstantsUtil-Dgve_DcH.js";import{f as le,p as ue}from"./core-BgQfsYFA.js";var de=r`
   :host {
     position: relative;
     background-color: var(--wui-color-gray-glass-002);
@@ -2122,4 +2122,4 @@ Minimum version required to store current data is: `+c+`.
         <wui-text variant="paragraph-500" color="fg-100">Website</wui-text>
       </wui-list-item>
     `:null}onChromeStore(){this.wallet?.chrome_store&&h.openHref(this.wallet.chrome_store,`_blank`)}onAppStore(){this.wallet?.app_store&&h.openHref(this.wallet.app_store,`_blank`)}onPlayStore(){this.wallet?.play_store&&h.openHref(this.wallet.play_store,`_blank`)}onHomePage(){this.wallet?.homepage&&h.openHref(this.wallet.homepage,`_blank`)}};Hn=Vn([s(`w3m-downloads-view`)],Hn);export{zn as W3mAllWalletsView,sn as W3mConnectingWcBasicView,Hn as W3mDownloadsView};
-//# sourceMappingURL=basic-D0nbqnnx.js.map
+//# sourceMappingURL=basic-pKBXmCAT.js.map

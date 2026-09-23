@@ -98,17 +98,38 @@ export default async function handler(req, res) {
     const sorted = Object.entries(allBuyers)
       .sort((a, b) => a[1].firstBlock - b[1].firstBlock);
     
-    const pmBuyers = sorted.filter(([_, i]) => i.sources[POOL_MANAGER]);
-    
+    // Fetch token name and symbol from RPC
+    let tokenName = TOKEN;
+    let tokenSymbol = 'TOKEN';
+    try {
+      const nameResult = await rpcCall("eth_call", [{
+        to: TOKEN,
+        data: _HEX + "06fdde03"
+      }, "latest"]);
+      if (nameResult) {
+        tokenName = _HEX + nameResult.substring(2).toLowerCase();
+        const bytes = Buffer.from(tokenName.slice(2), 'hex');
+        tokenName = bytes.toString('utf8').replace(/\0/g, '');
+      }
+    } catch(e) {}
+    try {
+      const symResult = await rpcCall("eth_call", [{
+        to: TOKEN,
+        data: _HEX + "95d89b41"
+      }, "latest"]);
+      if (symResult) {
+        tokenSymbol = _HEX + symResult.substring(2).toLowerCase();
+        const bytes = Buffer.from(tokenSymbol.slice(2), 'hex');
+        tokenSymbol = bytes.toString('utf8').replace(/\0/g, '');
+      }
+    } catch(e) {}
+
     return res.status(200).json({
       token: TOKEN,
+      tokenName: tokenName,
+      tokenSymbol: tokenSymbol,
       totalTransfers: logCount,
       uniqueWallets: sorted.length,
-      pmDistribution: (pmBuyers || []).slice(0, 20).map(([addr, info]) => ({
-        wallet: addr,
-        amount: Number(info.total) / 1e18,
-        block: info.firstBlock
-      })),
       earlyBuyers: (sorted || []).slice(0, 20).map(([addr, info]) => ({
         wallet: addr,
         amount: Number(info.total) / 1e18,
