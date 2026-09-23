@@ -53,16 +53,20 @@ export default async function handler(req, res) {
     
     const blockHex = await rpcCall("eth_blockNumber", []);
     const current = parseInt(blockHex, 16);
-    const fromBlock = Math.max(current - 500000, 69200000); // Smaller range for Vercel
+    
+    // Use smaller range and chunks to avoid rate limits
+    const maxBlocks = 200000;
+    const fromBlock = Math.max(current - maxBlocks, 69200000);
     
     const allBuyers = {};
     let logCount = 0;
     const startTime = Date.now();
     
-    for (let start = fromBlock; start < current; start += 5000) {
+    for (let start = fromBlock; start < current && start < fromBlock + maxBlocks; start += 2000) {
+      const end = Math.min(start + 2000, current, fromBlock + maxBlocks);
       const logs = await rpcCall("eth_getLogs", [{
         fromBlock: ethHex(start),
-        toBlock: ethHex(Math.min(start + 5000, current)),
+        toBlock: ethHex(end),
         address: TOKEN,
         topics: [TRANSFER_TOPIC]
       }]);
@@ -83,7 +87,8 @@ export default async function handler(req, res) {
         allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
       }
       
-      const pct = ((start - fromBlock) / (current - fromBlock) * 100).toFixed(0);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const pct = ((start - fromBlock) / Math.min(maxBlocks, current - fromBlock) * 100).toFixed(0);
       process.stdout.write("\rProgress: " + pct + "% (" + logCount + " logs)");
     }
     
