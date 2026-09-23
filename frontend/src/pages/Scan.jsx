@@ -40,30 +40,26 @@ export default function Scan() {
 
       // Transform data for display
       setTokenInfo({
-        name: result.token?.split('0x')[1]?.substring(0, 8) + '...' || result.token,
+        name: result.token?.substring(2, 10) + '...' || result.token,
         symbol: 'TOKEN',
         price: null,
         holders_count: result.uniqueWallets || 0
       });
 
-      const traders = [
-        ...result.earlyBuyers.slice(0, 20).map((b, i) => ({
-          wallet: b.wallet,
-          profit: b.amount > 1000000 ? b.amount - 1000000 : 0,
-          pnl_pct: b.amount > 1000000 ? 0.5 : 0,
-          buys: 1,
-          tags: result.pmDistribution.some(pm => pm.wallet === b.wallet) ? ['PM'] : [],
-          selected: false
-        })),
-        ...result.topBuyers.slice(0, 20).map((b, i) => ({
-          wallet: b.wallet,
-          profit: b.amount > 1000000 ? b.amount - 1000000 : 0,
-          pnl_pct: b.amount > 1000000 ? 0.5 : 0,
-          buys: 1,
-          tags: result.pmDistribution.some(pm => pm.wallet === b.wallet) ? ['PM'] : [],
-          selected: false
-        }))
+      // Use pmDistribution and earlyBuyers from API
+      const allBuyers = [
+        ...result.pmDistribution || [],
+        ...result.earlyBuyers || []
       ].filter((v, i, a) => a.findIndex(t => t.wallet === v.wallet) === i);
+
+      const traders = allBuyers.map(b => ({
+        wallet: b.wallet,
+        profit: b.amount > 1000000 ? b.amount - 1000000 : 0,
+        pnl_pct: b.amount > 1000000 ? 0.5 : 0,
+        buys: 1,
+        tags: result.pmDistribution?.some(pm => pm.wallet === b.wallet) ? ['PM'] : [],
+        selected: false
+      }));
 
       setTraders(traders);
       
