@@ -6,6 +6,7 @@
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .landing-bg {
@@ -264,6 +265,7 @@
 }
 
 .feature-card p {
+  font-family: 'Inter', sans-serif;
   color: var(--text-muted);
   line-height: 1.6;
   font-size: 15px;
@@ -319,6 +321,7 @@
 }
 
 .step p {
+  font-family: 'Inter', sans-serif;
   font-size: 13px;
   color: var(--text-muted);
   line-height: 1.5;
@@ -339,6 +342,7 @@
 }
 
 .cta-text {
+  font-family: 'Inter', sans-serif;
   font-size: 16px;
   color: var(--text-muted);
   margin-bottom: 32px;

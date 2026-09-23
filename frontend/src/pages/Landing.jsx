@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
-import { Loader2, Scan, TrendingUp, Shield, Zap } from 'lucide-react';
+import { Loader2, Scan, TrendingUp, Shield, Zap, BarChart3, Target, Bell, Search, Users, LineChart } from 'lucide-react';
 
 export default function Landing() {
   const { isConnected, connectWallet, isReconnecting } = useWallet();
@@ -71,11 +71,6 @@ export default function Landing() {
       {/* Hero Section */}
       <section className="hero">
         <div className="hero-content">
-          <div className="badge">
-            <Zap size={14} />
-            <span>Live on Robinhood Chain • Mainnet</span>
-          </div>
-          
           <h1 className="hero-title">
             Discover <span className="text-gradient">Early Buyers</span> on Robinhood Chain
           </h1>
@@ -134,15 +129,15 @@ export default function Landing() {
         {/* Floating Elements */}
         <div className="floating-elements">
           <div className="float-card">
-            <div className="float-icon">📊</div>
+            <BarChart3 size={18} className="float-icon" />
             <div className="float-text">Track Top Buyers</div>
           </div>
           <div className="float-card">
-            <div className="float-icon">🎯</div>
+            <Target size={18} className="float-icon" />
             <div className="float-text">PoolManager Analysis</div>
           </div>
           <div className="float-card">
-            <div className="float-icon">⚡</div>
+            <Bell size={18} className="float-icon" />
             <div className="float-text">Real-time Alerts</div>
           </div>
         </div>
@@ -153,17 +148,17 @@ export default function Landing() {
         <h2 className="section-title">Powerful Features</h2>
         <div className="features-grid">
           <div className="feature-card">
-            <div className="feature-icon">🔍</div>
+            <Search size={32} className="feature-icon" />
             <h3>Token Scanner</h3>
             <p>Enter any contract address to discover early buyers and PoolManager distribution instantly.</p>
           </div>
           <div className="feature-card">
-            <div className="feature-icon">👥</div>
+            <Users size={32} className="feature-icon" />
             <h3>Buyer Analysis</h3>
             <p>Identify whale wallets, track their movements, and build profitable clusters.</p>
           </div>
           <div className="feature-card">
-            <div className="feature-icon">📈</div>
+            <LineChart size={32} className="feature-icon" />
             <h3>Portfolio Tracking</h3>
             <p>Monitor your clusters in real-time and get alerts when your tracked wallets buy.</p>
           </div>
@@ -225,18 +220,6 @@ export default function Landing() {
           )}
         </button>
       </section>
-
-      {/* Footer */}
-      <footer className="footer">
-        <div className="footer-content">
-          <div className="logo">
-            <span className="logo-fnf">fnf</span>
-            <span className="logo-radar">radar</span>
-          </div>
-          <p className="footer-text">Built for the Robinhood Chain community</p>
-          <p className="footer-copy">© 2025 FNF Radar. All rights reserved.</p>
-        </div>
-      </footer>
     </div>
   );
 }
