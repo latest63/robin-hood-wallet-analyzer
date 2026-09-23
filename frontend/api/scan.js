@@ -106,9 +106,13 @@ export default async function handler(req, res) {
         to: TOKEN,
         data: _HEX + "06fdde03"
       }, "latest"]);
-      if (nameResult) {
-        tokenName = _HEX + nameResult.substring(2).toLowerCase();
-        const bytes = Buffer.from(tokenName.slice(2), 'hex');
+      if (nameResult && nameResult.length > 138) {
+        // ERC20 name() returns ABI-encoded string:
+        // offset(32) + length(32) + bytes
+        const dataHex = nameResult.slice(138);
+        const length = parseInt(dataHex.slice(0, 64), 16);
+        const strHex = dataHex.slice(64, 64 + length * 2);
+        const bytes = Buffer.from(strHex, 'hex');
         tokenName = bytes.toString('utf8').replace(/\0/g, '');
       }
     } catch(e) {}
@@ -117,9 +121,12 @@ export default async function handler(req, res) {
         to: TOKEN,
         data: _HEX + "95d89b41"
       }, "latest"]);
-      if (symResult) {
-        tokenSymbol = _HEX + symResult.substring(2).toLowerCase();
-        const bytes = Buffer.from(tokenSymbol.slice(2), 'hex');
+      if (symResult && symResult.length > 138) {
+        // ERC20 symbol() returns ABI-encoded string
+        const dataHex = symResult.slice(138);
+        const length = parseInt(dataHex.slice(0, 64), 16);
+        const strHex = dataHex.slice(64, 64 + length * 2);
+        const bytes = Buffer.from(strHex, 'hex');
         tokenSymbol = bytes.toString('utf8').replace(/\0/g, '');
       }
     } catch(e) {}
