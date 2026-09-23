@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { supabase, startMonitor } from '../lib/supabase';
-import { Loader2, ArrowLeft, Bell, ExternalLink, Copy, Check } from 'lucide-react';
+import { Loader2, ArrowLeft, Bell, ExternalLink, Copy, Check, Wallet, TrendingUp, Clock } from 'lucide-react';
 
 export default function ClusterDetail() {
   const { id } = useParams();
@@ -12,7 +12,7 @@ export default function ClusterDetail() {
   const [loading, setLoading] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [monitoring, setMonitoring] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(null);
 
   useEffect(() => {
     if (address && id) {
@@ -74,6 +74,9 @@ export default function ClusterDetail() {
     setTimeout(() => setCopied(null), 2000);
   };
 
+  const totalProfit = wallets.reduce((sum, w) => sum + (w.profit || 0), 0);
+  const avgPnl = wallets.length > 0 ? wallets.reduce((sum, w) => sum + (w.pnl_pct || 0), 0) / wallets.length : 0;
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>
@@ -96,42 +99,59 @@ export default function ClusterDetail() {
 
   return (
     <div className="fade-in">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Link to="/dashboard" className="btn btn-secondary" style={{ padding: '8px 12px' }}>
             <ArrowLeft size={16} />
           </Link>
-          <h1 style={{ fontSize: 24, fontWeight: 700 }}>{cluster.name}</h1>
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 700 }}>{cluster.name}</h1>
+            {cluster.token_symbol && (
+              <span className="badge badge-success mt-1">{cluster.token_symbol}</span>
+            )}
+          </div>
         </div>
-        {cluster.token_symbol && (
-          <span className="badge badge-success">{cluster.token_symbol}</span>
-        )}
+        <a
+          href={`https://robinhoodscan.com/token/${cluster.token_address}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-secondary"
+          style={{ padding: '8px 12px', fontSize: 13 }}
+        >
+          <ExternalLink size={14} />
+          Explorer
+        </a>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-3 mb-4">
+      <div className="grid grid-3 mb-6">
         <div className="stat-card">
           <div className="stat-value">{wallets.length}</div>
-          <div className="stat-label">Wallets</div>
+          <div className="stat-label">
+            <Wallet size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+            Wallets
+          </div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">
-            ${wallets.reduce((sum, w) => sum + (w.profit || 0), 0).toLocaleString()}
+          <div className="stat-value">${totalProfit.toLocaleString()}</div>
+          <div className="stat-label">
+            <TrendingUp size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+            Total Profit
           </div>
-          <div className="stat-label">Total Profit</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">
-            {cluster.token_address ? cluster.token_address.slice(0, 6) + '...' : 'N/A'}
+          <div className="stat-value">{(avgPnl * 100).toFixed(1)}%</div>
+          <div className="stat-label">
+            <Clock size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+            Avg PnL
           </div>
-          <div className="stat-label">Token</div>
         </div>
       </div>
 
       {/* Monitor */}
       <div className="card">
-        <h2 style={{ fontSize: 18, marginBottom: 16 }}>
-          <Bell size={18} style={{ verticalAlign: 'middle', marginRight: 8 }} />
+        <h2 style={{ fontSize: 18, marginBottom: 8, fontWeight: 600 }}>
+          <Bell size={18} style={{ verticalAlign: 'middle', marginRight: 8, color: 'var(--primary)' }} />
           Start Monitor
         </h2>
         <p className="text-sm text-muted mb-4">
@@ -168,7 +188,12 @@ export default function ClusterDetail() {
 
       {/* Wallets */}
       <div className="card mt-4">
-        <h2 style={{ fontSize: 18, marginBottom: 16 }}>Cluster Wallets</h2>
+        <div className="section-header">
+          <h2 style={{ fontSize: 18, fontWeight: 600 }}>
+            Cluster Wallets
+            <span className="badge badge-primary ml-2">{wallets.length}</span>
+          </h2>
+        </div>
         
         {wallets.length === 0 ? (
           <div className="empty-state">
@@ -187,31 +212,16 @@ export default function ClusterDetail() {
                 </tr>
               </thead>
               <tbody>
-                {wallets.map((wallet, i) => (
+                {wallets.map((wallet) => (
                   <tr key={wallet.id}>
                     <td>
-                      <span className="font-mono text-sm">
-                        {wallet.wallet_address.slice(0, 6)}...{wallet.wallet_address.slice(-4)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="text-success font-bold">
-                        ${(wallet.profit || 0).toLocaleString()}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={(wallet.pnl_pct || 0) > 0 ? 'text-success' : 'text-danger'}>
-                        {((wallet.pnl_pct || 0) * 100).toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="text-sm text-muted">
-                      {new Date(wallet.added_at).toLocaleDateString()}
-                    </td>
-                    <td>
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm">
+                          {wallet.wallet_address.slice(0, 8)}...{wallet.wallet_address.slice(-6)}
+                        </span>
                         <button
                           className="btn btn-secondary"
-                          style={{ padding: '6px 8px' }}
+                          style={{ padding: '4px 8px', fontSize: 12 }}
                           onClick={() => copyAddress(wallet.wallet_address)}
                           title="Copy address"
                         >
@@ -221,17 +231,32 @@ export default function ClusterDetail() {
                             <Copy size={14} />
                           )}
                         </button>
-                        <a
-                          href={`https://robinhoodscan.com/address/${wallet.wallet_address}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-secondary"
-                          style={{ padding: '6px 8px' }}
-                          title="View on explorer"
-                        >
-                          <ExternalLink size={14} />
-                        </a>
                       </div>
+                    </td>
+                    <td>
+                      <span className="text-success font-bold">
+                        ${wallet.profit?.toLocaleString() || 0}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={(wallet.pnl_pct || 0) > 0 ? 'text-success' : 'text-danger'}>
+                        {(wallet.pnl_pct * 100).toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="text-sm text-muted">
+                      {new Date(wallet.added_at).toLocaleDateString()}
+                    </td>
+                    <td>
+                      <a
+                        href={`https://robinhoodscan.com/address/${wallet.wallet_address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary"
+                        style={{ padding: '6px 8px' }}
+                        title="View on explorer"
+                      >
+                        <ExternalLink size={14} />
+                      </a>
                     </td>
                   </tr>
                 ))}

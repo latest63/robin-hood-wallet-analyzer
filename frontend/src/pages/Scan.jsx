@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
-import { scanToken } from '../lib/gmgn';
 import { createCluster, addWalletsToCluster } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Search, Check, ExternalLink } from 'lucide-react';
+import { Loader2, Search, Check, ExternalLink, Copy, Wallet, TrendingUp, Users, Activity } from 'lucide-react';
 
 export default function Scan() {
   const { address } = useWallet();
@@ -11,26 +10,30 @@ export default function Scan() {
   const [tokenAddress, setTokenAddress] = useState('');
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
+  const [progress, setProgress] = useState('');
   const [tokenInfo, setTokenInfo] = useState(null);
-  const [traders, setTraders] = useState([]);
+  const [pmDistribution, setPmDistribution] = useState([]);
+  const [earlyBuyers, setEarlyBuyers] = useState([]);
   const [selectedTraders, setSelectedTraders] = useState(new Set());
   const [clusterName, setClusterName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(null);
 
   const handleScan = async () => {
     if (!tokenAddress || !tokenAddress.startsWith('0x')) {
-      setError('Please enter a valid token address');
+      setError('Please enter a valid token address (0x...)');
       return;
     }
 
     setScanning(true);
     setError(null);
+    setProgress('Initializing scan...');
     setTokenInfo(null);
-    setTraders([]);
+    setPmDistribution([]);
+    setEarlyBuyers([]);
     setSelectedTraders(new Set());
 
     try {
-      // Use RPC-based scan via API endpoint
       const resp = await fetch(`/api/scan?address=${tokenAddress}`);
       const result = await resp.json();
       
@@ -38,66 +41,74 @@ export default function Scan() {
         throw new Error(result.error);
       }
 
+      setProgress('Parsing results...');
+
       // Transform data for display
       setTokenInfo({
         name: result.token?.substring(2, 10) + '...' || result.token,
         symbol: 'TOKEN',
         price: null,
-        holders_count: result.uniqueWallets || 0
+        holders_count: result.uniqueWallets || 0,
+        totalTransfers: result.totalTransfers || 0,
+        pmWallets: result.pmDistribution?.length || 0,
+        address: result.token
       });
 
-      // Use pmDistribution and earlyBuyers from API
-      const allBuyers = [
-        ...result.pmDistribution || [],
-        ...result.earlyBuyers || []
-      ].filter((v, i, a) => a.findIndex(t => t.wallet === v.wallet) === i);
+      const pmData = result.pmDistribution || [];
+      const earlyData = result.earlyBuyers || [];
 
-      const traders = allBuyers.map(b => ({
-        wallet: b.wallet,
-        profit: b.amount > 1000000 ? b.amount - 1000000 : 0,
-        pnl_pct: b.amount > 1000000 ? 0.5 : 0,
-        buys: 1,
-        tags: result.pmDistribution?.some(pm => pm.wallet === b.wallet) ? ['PM'] : [],
-        selected: false
-      }));
+      setPmDistribution(pmData.map(item => ({
+        wallet: item.wallet,
+        amount: item.amount,
+        block: item.block,
+        timestamp: item.timestamp
+      })));
 
-      setTraders(traders);
-      
-      // Auto-select profitable traders
+      setEarlyBuyers(earlyData.map(item => ({
+        wallet: item.wallet,
+        amount: item.amount,
+        block: item.block,
+        timestamp: item.timestamp
+      })));
+
+      // Auto-select PM wallets
       const autoSelected = new Set();
-      traders.forEach((t, i) => {
-        if (t.profit > 1000 || t.tags.includes('PM')) autoSelected.add(i);
-      });
+      pmData.forEach((_, i) => autoSelected.add(i));
       setSelectedTraders(autoSelected);
+
     } catch (err) {
       console.error('Scan error:', err);
       setError(err.message || 'Failed to scan token');
     } finally {
       setScanning(false);
+      setProgress('');
     }
   };
 
-  const toggleTrader = (index) => {
+  const toggleTrader = (type, index) => {
+    const key = `${type}-${index}`;
     const newSelected = new Set(selectedTraders);
-    if (newSelected.has(index)) {
-      newSelected.delete(index);
+    if (newSelected.has(key)) {
+      newSelected.delete(key);
     } else {
-      newSelected.add(index);
+      newSelected.add(key);
     }
     setSelectedTraders(newSelected);
   };
 
-  const selectAll = () => {
-    const all = new Set(traders.map((_, i) => i));
-    setSelectedTraders(all);
+  const copyAddress = (addr) => {
+    navigator.clipboard.writeText(addr);
+    setCopied(addr);
+    setTimeout(() => setCopied(null), 2000);
   };
 
-  const selectProfitable = () => {
-    const profitable = new Set();
-    traders.forEach((t, i) => {
-      if (t.profit > 1000) profitable.add(i);
-    });
-    setSelectedTraders(profitable);
+  const formatAmount = (amount) => {
+    if (!amount) return '0';
+    const num = parseFloat(amount);
+    if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+    if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+    if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
+    return num.toFixed(2);
   };
 
   const handleSaveCluster = async () => {
@@ -121,11 +132,19 @@ export default function Scan() {
         token_symbol: tokenInfo?.symbol || ''
       });
 
-      const selectedWallets = Array.from(selectedTraders).map(i => ({
-        wallet: traders[i].wallet,
-        profit: traders[i].profit,
-        pnl_pct: traders[i].pnl_pct
-      }));
+      const selectedWallets = [];
+      selectedTraders.forEach(key => {
+        const [type, idx] = key.split('-');
+        const list = type === 'pm' ? pmDistribution : earlyBuyers;
+        const wallet = list[parseInt(idx)];
+        if (wallet) {
+          selectedWallets.push({
+            wallet: wallet.wallet,
+            profit: wallet.amount > 1000000 ? wallet.amount - 1000000 : 0,
+            pnl_pct: wallet.amount > 1000000 ? 0.5 : 0
+          });
+        }
+      });
 
       await addWalletsToCluster(cluster.id, selectedWallets);
       navigate('/dashboard');
@@ -139,14 +158,18 @@ export default function Scan() {
 
   return (
     <div className="fade-in">
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 20 }}>Scan Token</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 style={{ fontSize: 28, fontWeight: 800 }}>Token Scanner</h1>
+        <div className="text-sm text-muted">
+          Robin Hood Chain • Mainnet
+        </div>
+      </div>
 
       {/* Search */}
-      <div className="card">
-        <div className="flex gap-3">
+      <div className="search-box">
+        <div className="input-group">
           <input
             type="text"
-            className="input"
             placeholder="Enter token contract address (0x...)"
             value={tokenAddress}
             onChange={(e) => setTokenAddress(e.target.value)}
@@ -173,25 +196,38 @@ export default function Scan() {
         </div>
       </div>
 
+      {progress && (
+        <div className="progress fade-in">{progress}</div>
+      )}
+
       {error && (
-        <div className="error-msg mt-3">{error}</div>
+        <div className="error-msg mt-3 fade-in">{error}</div>
       )}
 
       {/* Token Info */}
       {tokenInfo && (
-        <div className="card mt-3 fade-in">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 style={{ fontSize: 20, fontWeight: 700 }}>
-                {tokenInfo.name} ({tokenInfo.symbol})
-              </h2>
-              <div className="text-sm text-muted mt-1">
-                Price: ${tokenInfo.price || 'N/A'} • 
-                Holders: {tokenInfo.holders_count || 'N/A'}
-              </div>
+        <div className="token-banner fade-in card-glow">
+          <div>
+            <h3>{tokenInfo.name} ({tokenInfo.symbol})</h3>
+            <div className="text-sm text-muted mt-1 font-mono" style={{ fontSize: 12 }}>
+              {tokenInfo.address}
             </div>
+          </div>
+          <div className="flex gap-3 flex-wrap">
+            <span className="badge badge-primary">
+              <Users size={12} />
+              {tokenInfo.holders_count} Holders
+            </span>
+            <span className="badge badge-warning">
+              <Activity size={12} />
+              {tokenInfo.totalTransfers} Transfers
+            </span>
+            <span className="badge badge-success">
+              <Wallet size={12} />
+              {tokenInfo.pmWallets} PM Wallets
+            </span>
             <a
-              href={`https://robinhoodscan.com/token/${tokenAddress}`}
+              href={`https://robinhoodscan.com/token/${tokenInfo.address}`}
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
@@ -204,25 +240,181 @@ export default function Scan() {
         </div>
       )}
 
-      {/* Traders List */}
-      {traders.length > 0 && (
-        <div className="card mt-3 fade-in">
-          <div className="flex items-center justify-between mb-4">
-            <h2 style={{ fontSize: 18 }}>
-              Profitable Traders ({selectedTraders.size} selected)
+      {/* PoolManager Distribution */}
+      {pmDistribution.length > 0 && (
+        <div className="card fade-in">
+          <div className="section-header">
+            <h2>
+              <Wallet size={18} className="text-primary" />
+              PoolManager Distribution
+              <span className="badge badge-primary ml-2">{pmDistribution.length}</span>
             </h2>
-            <div className="flex gap-2">
-              <button className="btn btn-secondary" onClick={selectAll} style={{ padding: '8px 12px', fontSize: 13 }}>
-                Select All
-              </button>
-              <button className="btn btn-secondary" onClick={selectProfitable} style={{ padding: '8px 12px', fontSize: 13 }}>
-                Select Profitable
-              </button>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th style={{ width: 50 }}></th>
+                  <th>Rank</th>
+                  <th>Wallet Address</th>
+                  <th>Amount Received</th>
+                  <th>Block</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pmDistribution.map((wallet, i) => (
+                  <tr
+                    key={i}
+                    onClick={() => toggleTrader('pm', i)}
+                    style={{ 
+                      cursor: 'pointer',
+                      background: selectedTraders.has(`pm-${i}`) ? 'rgba(99, 102, 241, 0.08)' : 'transparent'
+                    }}
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="checkbox"
+                        checked={selectedTraders.has(`pm-${i}`)}
+                        onChange={() => toggleTrader('pm', i)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
+                    <td>
+                      <span className="text-dim text-xs">#{i + 1}</span>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm truncate" style={{ maxWidth: 140 }}>
+                          {wallet.wallet.slice(0, 8)}...{wallet.wallet.slice(-6)}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyAddress(wallet.wallet);
+                          }}
+                          className="btn btn-secondary"
+                          style={{ padding: '4px 8px', fontSize: 12 }}
+                        >
+                          {copied === wallet.wallet ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="text-success font-bold">
+                        {formatAmount(wallet.amount)}
+                      </span>
+                    </td>
+                    <td className="text-sm text-muted">
+                      #{parseInt(wallet.block).toLocaleString()}
+                    </td>
+                    <td className="text-sm text-muted">
+                      {wallet.timestamp ? new Date(wallet.timestamp).toLocaleTimeString() : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Early Buyers */}
+      {earlyBuyers.length > 0 && (
+        <div className="card fade-in">
+          <div className="section-header">
+            <h2>
+              <TrendingUp size={18} className="text-success" />
+              Early Buyers
+              <span className="badge badge-success ml-2">{earlyBuyers.length}</span>
+            </h2>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th style={{ width: 50 }}></th>
+                  <th>Rank</th>
+                  <th>Wallet Address</th>
+                  <th>Amount Received</th>
+                  <th>Block</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {earlyBuyers.map((wallet, i) => (
+                  <tr
+                    key={i}
+                    onClick={() => toggleTrader('early', i)}
+                    style={{ 
+                      cursor: 'pointer',
+                      background: selectedTraders.has(`early-${i}`) ? 'rgba(16, 185, 129, 0.08)' : 'transparent'
+                    }}
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="checkbox"
+                        checked={selectedTraders.has(`early-${i}`)}
+                        onChange={() => toggleTrader('early', i)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
+                    <td>
+                      <span className="text-dim text-xs">#{i + 1}</span>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm truncate" style={{ maxWidth: 140 }}>
+                          {wallet.wallet.slice(0, 8)}...{wallet.wallet.slice(-6)}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyAddress(wallet.wallet);
+                          }}
+                          className="btn btn-secondary"
+                          style={{ padding: '4px 8px', fontSize: 12 }}
+                        >
+                          {copied === wallet.wallet ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="text-success font-bold">
+                        {formatAmount(wallet.amount)}
+                      </span>
+                    </td>
+                    <td className="text-sm text-muted">
+                      #{parseInt(wallet.block).toLocaleString()}
+                    </td>
+                    <td className="text-sm text-muted">
+                      {wallet.timestamp ? new Date(wallet.timestamp).toLocaleTimeString() : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Action Bar */}
+      {(pmDistribution.length > 0 || earlyBuyers.length > 0) && (
+        <div className="card fade-in mt-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 600 }}>
+                Create Cluster
+              </h2>
+              <p className="text-sm text-muted mt-1">
+                {selectedTraders.size} traders selected
+              </p>
             </div>
           </div>
 
-          {/* Cluster Name Input */}
-          <div className="flex gap-3 mb-4">
+          <div className="flex gap-3">
             <input
               type="text"
               className="input"
@@ -234,7 +426,7 @@ export default function Scan() {
               className="btn btn-primary"
               onClick={handleSaveCluster}
               disabled={saving || selectedTraders.size === 0}
-              style={{ minWidth: 160 }}
+              style={{ minWidth: 180 }}
             >
               {saving ? (
                 <>
@@ -249,65 +441,16 @@ export default function Scan() {
               )}
             </button>
           </div>
-
-          {/* Traders Table */}
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th style={{ width: 50 }}></th>
-                  <th>Wallet</th>
-                  <th>Profit</th>
-                  <th>PnL %</th>
-                  <th>Buys</th>
-                </tr>
-              </thead>
-              <tbody>
-                {traders.map((trader, i) => (
-                  <tr
-                    key={i}
-                    onClick={() => toggleTrader(i)}
-                    style={{ cursor: 'pointer', background: selectedTraders.has(i) ? 'rgba(99, 102, 241, 0.05)' : 'transparent' }}
-                  >
-                    <td>
-                      <input
-                        type="checkbox"
-                        className="checkbox"
-                        checked={selectedTraders.has(i)}
-                        onChange={() => toggleTrader(i)}
-                      />
-                    </td>
-                    <td>
-                      <span className="font-mono text-sm">
-                        {trader.wallet.slice(0, 6)}...{trader.wallet.slice(-4)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="text-success font-bold">
-                        ${trader.profit.toLocaleString()}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={trader.pnl_pct > 0 ? 'text-success' : 'text-danger'}>
-                        {(trader.pnl_pct * 100).toFixed(1)}%
-                      </span>
-                    </td>
-                    <td>{trader.buys}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
 
       {/* Empty State */}
       {!scanning && !tokenInfo && (
-        <div className="empty-state mt-4">
+        <div className="empty-state mt-8 fade-in">
           <Search size={48} style={{ color: 'var(--text-dim)', marginBottom: 16 }} />
-          <p>Enter a token address to find profitable traders</p>
+          <p style={{ fontSize: 16, color: 'var(--text)' }}>Scan any token on Robin Hood Chain</p>
           <p className="text-sm text-muted mt-2">
-            Build clusters from top traders and get alerts when they buy
+            Enter a contract address to discover early buyers and PoolManager distribution
           </p>
         </div>
       )}

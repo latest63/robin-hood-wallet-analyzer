@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { getUserClusters, getUserMonitors, deleteCluster, stopMonitor } from '../lib/supabase';
-import { Loader2, Plus, Trash2, Bell, BellOff, ExternalLink } from 'lucide-react';
+import { Loader2, Plus, Trash2, Bell, BellOff, ExternalLink, TrendingUp, Users, Activity, Eye } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function Dashboard() {
@@ -54,6 +54,9 @@ export default function Dashboard() {
     }
   };
 
+  const totalWallets = clusters.reduce((sum, c) => sum + (c.cluster_wallets?.length || 0), 0);
+  const activeMonitors = monitors.filter(m => m.active).length;
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>
@@ -64,42 +67,57 @@ export default function Dashboard() {
 
   return (
     <div className="fade-in">
-      <div className="flex items-center justify-between mb-4">
-        <h1 style={{ fontSize: 24, fontWeight: 700 }}>Dashboard</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 style={{ fontSize: 28, fontWeight: 800 }}>Dashboard</h1>
         <Link to="/scan" className="btn btn-primary">
           <Plus size={16} />
-          New Cluster
+          New Scan
         </Link>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-3 mb-4">
+      <div className="grid grid-3 mb-6">
         <div className="stat-card">
           <div className="stat-value">{clusters.length}</div>
-          <div className="stat-label">Clusters</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-value">
-            {clusters.reduce((sum, c) => sum + (c.cluster_wallets?.length || 0), 0)}
+          <div className="stat-label">
+            <TrendingUp size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+            Clusters
           </div>
-          <div className="stat-label">Total Wallets</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{monitors.filter(m => m.active).length}</div>
-          <div className="stat-label">Active Monitors</div>
+          <div className="stat-value">{totalWallets}</div>
+          <div className="stat-label">
+            <Users size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+            Total Wallets
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value">{activeMonitors}</div>
+          <div className="stat-label">
+            <Activity size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+            Active Monitors
+          </div>
         </div>
       </div>
 
       {/* Clusters */}
       <div className="card">
-        <h2 style={{ fontSize: 18, marginBottom: 16 }}>Your Clusters</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 style={{ fontSize: 18, fontWeight: 600 }}>Your Clusters</h2>
+          <span className="text-sm text-muted">{clusters.length} total</span>
+        </div>
         
         {clusters.length === 0 ? (
           <div className="empty-state">
+            <TrendingUp size={48} style={{ color: 'var(--text-dim)', marginBottom: 16 }} />
             <p>No clusters yet</p>
             <p className="text-sm text-muted mt-2">
               Scan a token to find profitable traders and build your first cluster
             </p>
+            <Link to="/scan" className="btn btn-primary mt-4">
+              <Plus size={16} />
+              Start Scanning
+            </Link>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -108,13 +126,19 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 15 }}>{cluster.name}</div>
-                    <div className="text-sm text-muted mt-1">
+                    <div className="text-sm text-muted mt-1 flex items-center gap-2 flex-wrap">
                       {cluster.token_symbol && (
-                        <span className="badge badge-success" style={{ marginRight: 8 }}>
+                        <span className="badge badge-success">
                           {cluster.token_symbol}
                         </span>
                       )}
-                      {cluster.cluster_wallets?.length || 0} wallets
+                      <span className="flex items-center gap-1">
+                        <Users size={12} />
+                        {cluster.cluster_wallets?.length || 0} wallets
+                      </span>
+                      <span className="font-mono text-xs text-dim">
+                        {cluster.token_address?.slice(0, 8)}...{cluster.token_address?.slice(-6)}
+                      </span>
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -123,6 +147,7 @@ export default function Dashboard() {
                       className="btn btn-secondary"
                       style={{ padding: '8px 12px', fontSize: 13 }}
                     >
+                      <Eye size={14} />
                       View
                     </Link>
                     <button
@@ -142,13 +167,17 @@ export default function Dashboard() {
 
       {/* Monitors */}
       <div className="card mt-4">
-        <h2 style={{ fontSize: 18, marginBottom: 16 }}>Active Monitors</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 style={{ fontSize: 18, fontWeight: 600 }}>Active Monitors</h2>
+          <span className="text-sm text-muted">{monitors.length} total</span>
+        </div>
         
         {monitors.length === 0 ? (
-          <div className="empty-state">
+          <div className="empty-state" style={{ padding: '40px 20px' }}>
+            <BellOff size={40} style={{ color: 'var(--text-dim)', marginBottom: 12 }} />
             <p>No active monitors</p>
             <p className="text-sm text-muted mt-2">
-              Start a monitor to get Discord alerts when cluster wallets buy
+              Create a cluster and start monitoring to get alerts when wallets buy
             </p>
           </div>
         ) : (
@@ -160,14 +189,19 @@ export default function Dashboard() {
                     <div style={{ fontWeight: 600, fontSize: 15 }}>
                       {monitor.clusters?.name || 'Unknown Cluster'}
                     </div>
-                    <div className="text-sm text-muted mt-1">
+                    <div className="text-sm text-muted mt-1 flex items-center gap-2">
                       {monitor.clusters?.token_symbol && (
-                        <span className="badge badge-success" style={{ marginRight: 8 }}>
+                        <span className="badge badge-success">
                           {monitor.clusters.token_symbol}
                         </span>
                       )}
                       <span className={monitor.active ? 'text-success' : 'text-danger'}>
-                        {monitor.active ? '● Active' : '● Stopped'}
+                        {monitor.active ? (
+                          <span className="flex items-center gap-1">
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
+                            Active
+                          </span>
+                        ) : 'Stopped'}
                       </span>
                     </div>
                   </div>
