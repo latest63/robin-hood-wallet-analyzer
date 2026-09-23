@@ -11,12 +11,12 @@
   --bg-glass: rgba(255, 255, 255, 0.03);
   --border: #2a2a3e;
   --border-light: #3a3a4e;
-  --border-glow: rgba(99, 102, 241, 0.3);
-  --primary: #6366f1;
-  --primary-hover: #818cf8;
-  --primary-glow: rgba(99, 102, 241, 0.4);
-  --success: #10b981;
-  --success-bg: rgba(16, 185, 129, 0.1);
+  --border-glow: rgba(249, 115, 22, 0.3);
+  --primary: #f97316;
+  --primary-hover: #fb923c;
+  --primary-glow: rgba(249, 115, 22, 0.4);
+  --success: #f97316;
+  --success-bg: rgba(249, 115, 22, 0.1);
   --warning: #f59e0b;
   --warning-bg: rgba(245, 158, 11, 0.1);
   --danger: #ef4444;
@@ -24,7 +24,7 @@
   --text: #e2e8f0;
   --text-muted: #94a3b8;
   --text-dim: #64748b;
-  --accent-gradient: linear-gradient(135deg, #6366f1, #a855f7);
+  --accent-gradient: linear-gradient(135deg, #f97316, #ea580c);
   --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
   --glow-shadow: 0 0 40px var(--primary-glow);
 }
@@ -104,6 +104,7 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  background: radial-gradient(ellipse at top, rgba(249, 115, 22, 0.06) 0%, transparent 50%);
 }
 
 /* Cards */
@@ -322,7 +323,7 @@ body {
 .wallet-card:hover {
   border-color: var(--primary);
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 8px 32px rgba(249, 115, 22, 0.2);
 }
 
 .wallet-card.selected {
