@@ -86,6 +86,7 @@ function Navbar() {
   return (
     <nav className="navbar">
       <Link to="/" className="logo" onClick={close}>
+        <img src="/logo.png" alt="FNF Radar Logo" style={{ height: 28, marginRight: 8 }} />
         <span className="logo-fnf">fnf</span>
         <span className="logo-radar">radar</span>
       </Link>
