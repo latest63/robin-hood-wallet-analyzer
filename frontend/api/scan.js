@@ -26,8 +26,9 @@ async function rpcCall(method, params, retries = 5) {
 }
 
 function ethHex(val) {
-  const h = val.toString(16);
-  return _HEX + (h.length % 2 ? "0" : "") + h;
+  // Use bigint to avoid leading zeros
+  const h = BigInt(val).toString(16);
+  return _HEX + h;
 }
 
 function toLower(hex) {
