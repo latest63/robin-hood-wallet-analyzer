@@ -1,6 +1,5 @@
 // Vercel Serverless Function - Early Buyers Scan (RPC-based)
 // Scans token transfers via RPC to find PoolManager distributions
-// This works for tokens that GMGN doesn't track
 
 import { execSync } from 'child_process';
 import { join } from 'path';
@@ -25,18 +24,18 @@ export default async function handler(req, res) {
   try {
     const { address } = req.method === 'POST' ? req.body : req.query;
 
-    if (!address) {
-      return res.status(400).json({ error: 'Missing contract address' });
+    if (!address || !address.startsWith('0x')) {
+      return res.status(400).json({ error: 'Missing or invalid contract address' });
     }
 
-    // Run the Python scanner
+    // Run the Python scanner with timeout
     const result = execSync(
       `python3 "${SCRIPT_PATH}" "${address}"`,
-      { encoding: 'utf8', timeout: 60000 }
+      { encoding: 'utf8', timeout: 90000 }
     );
 
-    // Parse output
-    const lines = result.trim().split('\n');
+    // Parse output into structured data
+    const lines = result.split('\n').filter(l => l.trim());
     const scan = {
       token: null,
       totalTransfers: 0,
@@ -70,12 +69,12 @@ export default async function handler(req, res) {
       else if (line.includes('EARLY BUYERS')) {
         section = 'earlyBuyers';
       }
-      // Data lines
-      else if (line.startsWith('  0x')) {
+      // Data lines starting with "  0x"
+      else if (line.match(/^\s+0x[a-f0-9]+\s+\|/)) {
         const parts = line.trim().split('|');
         if (parts.length >= 3) {
           const wallet = parts[0].trim();
-          const amount = parseFloat(parts[1].trim().replace(',', '')) || 0;
+          const amount = parseFloat(parts[1].trim().replace(/,/g, '')) || 0;
           const blockMatch = parts[2].match(/blk=(\d+)/);
           const block = blockMatch ? parseInt(blockMatch[1]) : 0;
           
@@ -93,7 +92,7 @@ export default async function handler(req, res) {
     console.error('Scan error:', error.message);
     return res.status(500).json({ 
       error: error.message,
-      stdout: error.stdout?.substring(0, 500) || undefined 
+      stdout: error.stdout?.substring(0, 1000) || undefined 
     });
   }
 }
