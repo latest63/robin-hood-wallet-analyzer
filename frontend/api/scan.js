@@ -212,6 +212,11 @@ export default async function handler(req, res) {
         const amount = BigInt("0x" + (log.data || _HEX).substring(2));
         const blockNum = parseInt(log.blockNumber, 16);
         
+        // Debug: log first few transfers
+        if (logCount < 5) {
+          console.log(`Transfer: ${fromAddr} -> ${toAddr}, amount: ${amount}`);
+        }
+        
         // Only count transfers where creator/mint is the SENDER
         if (fromAddr !== creatorAddress && fromAddr !== '0x0000000000000000000000000000000000000000') {
           continue;
