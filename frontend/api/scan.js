@@ -234,15 +234,19 @@ export default async function handler(req, res) {
       .slice(0, isTestnet ? 5 : 20);
     
     const result = {
-      address,
-      name: metadata.name,
-      symbol: metadata.symbol,
-      holders: metadata.holders,
+      token: address,
+      tokenName: metadata.name,
+      tokenSymbol: metadata.symbol,
+      uniqueWallets: Object.keys(allBuyers).length,
+      holdersCount: metadata.holders,
       totalTransfers: logCount,
-      totalBuyers: Object.keys(allBuyers).length,
-      startBlock,
-      endBlock: currentBlock,
-      topBuyers: buyers
+      network,
+      earlyBuyers: buyers.map(b => ({
+        wallet: b.address,
+        amount: b.total,
+        block: b.firstBlock,
+        timestamp: null
+      }))
     };
     
     return res.status(200).json(result);
