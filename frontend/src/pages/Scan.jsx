@@ -239,7 +239,7 @@ export default function Scan() {
               {tokenInfo.totalTransfers} Transfers
             </span>
             <a
-              href={`https://${tokenInfo.network === 'testnet' ? 'explorer.testnet' : 'robinhoodscan'}.com/token/${tokenInfo.address}`}
+              href={`https://${tokenInfo.network === 'testnet' ? 'explorer.testnet.chain.robinhood.com/address' : 'robinhoodchain.blockscout.com/address'}?address=${tokenInfo.address}`}
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
