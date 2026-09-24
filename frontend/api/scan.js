@@ -204,7 +204,8 @@ export default async function handler(req, res) {
     // Fetch token name and symbol
     let tokenName = TOKEN;
     let tokenSymbol = 'TOKEN';
-    
+    let holdersCount = 0;
+
     if (isTestnet) {
       // Try explorer API first for testnet
       try {
