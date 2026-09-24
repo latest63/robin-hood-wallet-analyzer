@@ -1,89 +1,38 @@
-// RPC-based early buyers scanner (Node.js) - with Explorer API fallback for testnet
+// Explorer-based early buyers scanner (Node.js)
 const _HEX = Buffer.from([48, 120]).toString(); // "0x"
-const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-
-const RPC_URLS = {
-  mainnet: "https://rpc.mainnet.chain.robinhood.com",
-  testnet: "https://rpc.testnet.chain.robinhood.com"
-};
 
 const EXPLORER_URLS = {
   mainnet: "https://robinhoodchain.blockscout.com/api/v2",
   testnet: "https://explorer.testnet.chain.robinhood.com/api/v2"
 };
 
-async function rpcCall(method, params, network = "mainnet", retries = 5) {
-  const url = RPC_URLS[network] || RPC_URLS.mainnet;
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 })
-      });
-      if (res.status === 429) {
-        const delay = 3000 * (i + 1);
-        console.log(`Rate limited, waiting ${delay}ms...`);
-        await new Promise(r => setTimeout(r, delay));
-        continue;
-      }
-      return (await res.json()).result;
-    } catch (e) {
-      if (i === retries - 1) throw e;
-      await new Promise(r => setTimeout(r, 1000));
-    }
-  }
-}
-
-function ethHex(val) {
-  const h = BigInt(val).toString(16);
-  return _HEX + h;
-}
-
 function toLower(hex) {
   return hex.toLowerCase();
 }
 
-// Use Explorer API for testnet to get all historical data quickly
-async function scanWithExplorer(TOKEN, network) {
-  const explorerUrl = EXPLORER_URLS[network];
-  const address = TOKEN.toLowerCase();
+// Fetch paginated transactions from explorer
+async function fetchTransactions(address, network, limit = 100) {
+  const explorerUrl = EXPLORER_URLS[network] || EXPLORER_URLS.mainnet;
+  const allTxs = [];
+  let offset = 0;
   
-  // Get transactions by address
-  const txsResp = await fetch(`${explorerUrl}/addresses/${address}/transactions`);
-  const txsData = await txsResp.json();
-  const txs = txsData.data || [];
-  
-  // Filter for transfer events (send method)
-  const transfers = txs.filter(tx => tx.method === 'transfer' || tx.method === 'Transfer');
-  
-  // Build buyers map from transfers
-  const allBuyers = {};
-  let logCount = 0;
-  
-  for (const tx of transfers) {
-    if (!tx.transfers) continue;
-    for (const transfer of tx.transfers) {
-      if (transfer.token_symbol === undefined) continue;
-      const fromAddr = (transfer.sender || "").toLowerCase();
-      const toAddr = (transfer.receiver || "").toLowerCase();
-      const amount = BigInt(transfer.value || "0");
-      const blockNum = parseInt(transfer.block_number || "0");
-      
-      if (!amount || amount === 0n) continue;
-      
-      if (!allBuyers[toAddr]) {
-        allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
-      }
-      allBuyers[toAddr].total += amount;
-      allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
-      logCount++;
-    }
+  while (true) {
+    const resp = await fetch(`${explorerUrl}/addresses/${address}/transactions?page[size]=${limit}&page[offset]=${offset}`);
+    const data = await resp.json();
+    const txs = data.items || [];
+    
+    if (txs.length === 0) break;
+    allTxs.push(...txs);
+    
+    // If we got fewer than limit, we've reached the end
+    if (txs.length < limit) break;
+    offset += limit;
+    
+    // Safety limit - don't fetch more than 1000 transactions
+    if (allTxs.length >= 1000) break;
   }
   
-  console.log(`Explorer scan done. Unique wallets: ${Object.keys(allBuyers).length}, transfers: ${logCount}`);
-  
-  return { allBuyers, logCount };
+  return allTxs;
 }
 
 export default async function handler(req, res) {
@@ -100,7 +49,6 @@ export default async function handler(req, res) {
     }
     
     const isTestnet = network === "testnet";
-    const isMainnet = !isTestnet;
     console.log(`Scanning ${network}:`, address);
     
     // Build address safely
@@ -109,158 +57,75 @@ export default async function handler(req, res) {
     let allBuyers = {};
     let logCount = 0;
     
-    if (isTestnet) {
-      // Testnet: scan from block 0x7000000 (117.9M) to capture all historical data
-      const blockHex = await rpcCall("eth_blockNumber", [], "testnet");
-      const current = parseInt(blockHex, 16);
-      console.log(`Testnet current block: ${current}`);
+    // Use explorer API to get token data and transfers
+    try {
+      // Get token info
+      const tokenResp = await fetch(`https://${isTestnet ? 'explorer.testnet' : 'robinhoodchain.blockscout'}.com/api/v2/addresses/${TOKEN}`);
+      const tokenData = await tokenResp.json();
       
-      // Start from ~118M blocks to cover early token deployments
-      const START_BLOCK = 0x7000000; // 117,964,800
-      const chunkSize = 10000;
-      const startTime = Date.now();
+      let tokenName = TOKEN;
+      let tokenSymbol = 'TOKEN';
+      let holdersCount = 0;
       
-      for (let start = START_BLOCK; start <= current; start += chunkSize) {
-        const end = Math.min(start + chunkSize - 1, current);
-        const logs = await rpcCall("eth_getLogs", [{
-          fromBlock: ethHex(start),
-          toBlock: ethHex(end),
-          address: TOKEN,
-          topics: [TRANSFER_TOPIC]
-        }], "testnet");
+      if (tokenData.token) {
+        tokenName = tokenData.token.name || tokenName;
+        tokenSymbol = tokenData.token.symbol || tokenSymbol;
+        holdersCount = parseInt(tokenData.token.holders_count || '0');
+      }
+      
+      // Get transactions with token transfers
+      const txs = await fetchTransactions(TOKEN, network);
+      console.log(`Fetched ${txs.length} transactions from explorer`);
+      
+      // Process each transaction to find transfers
+      for (const tx of txs) {
+        if (!tx.token_transfers) continue;
         
-        if (!logs?.length) continue;
-        logCount += logs.length;
-        
-        for (const log of logs) {
-          const toAddr = _HEX + log.topics[2].substring(26).toLowerCase();
-          const fromAddr = _HEX + log.topics[1].substring(26).toLowerCase();
-          const amount = BigInt("0x" + (log.data || _HEX).substring(2));
-          const blockNum = parseInt(log.blockNumber, 16);
+        for (const transfer of tx.token_transfers) {
+          const fromAddr = (transfer.sender || "").toLowerCase();
+          const toAddr = (transfer.receiver || "").toLowerCase();
+          const amount = BigInt(transfer.value || "0");
+          const blockNum = parseInt(transfer.block_number || "0");
+          
+          if (!amount || amount === 0n) continue;
           
           if (!allBuyers[toAddr]) {
             allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
           }
           allBuyers[toAddr].total += amount;
           allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
-        }
-        
-        // Progress report every 100K blocks or 10s
-        if ((start % 100000 === 0 || (Date.now() - startTime) > 10000) && start > 0) {
-          const pct = (start / current * 100).toFixed(1);
-          console.log(`Progress: ${pct}% (${logCount} logs)`);
+          logCount++;
         }
       }
       
-      console.log(`Testnet scan complete. Unique wallets: ${Object.keys(allBuyers).length}, transfers: ${logCount}`);
-    } else {
-      // Mainnet: use RPC scan
-      const blockHex = await rpcCall("eth_blockNumber", [], "mainnet");
-      const current = parseInt(blockHex, 16);
+      console.log(`Explorer scan complete. Unique wallets: ${Object.keys(allBuyers).length}, transfers: ${logCount}`);
       
-      // Mainnet uses fixed starting point
-      const maxBlocks = 200000;
-      const fromBlock = Math.max(current - maxBlocks, 69200000);
+      const sorted = Object.entries(allBuyers)
+        .sort((a, b) => a[1].firstBlock - b[1].firstBlock);
       
-      const startTime = Date.now();
+      // Testnet shows top 5, mainnet shows top 20
+      const limit = isTestnet ? 5 : 20;
       
-      for (let start = fromBlock; start < current && start < fromBlock + maxBlocks; start += 2000) {
-        const end = Math.min(start + 2000, current, fromBlock + maxBlocks);
-        const logs = await rpcCall("eth_getLogs", [{
-          fromBlock: ethHex(start),
-          toBlock: ethHex(end),
-          address: TOKEN,
-          topics: [TRANSFER_TOPIC]
-        }], "mainnet");
-        
-        if (!logs?.length) continue;
-        logCount += logs.length;
-        
-        for (const log of logs) {
-          const toAddr = _HEX + log.topics[2].substring(26).toLowerCase();
-          const fromAddr = _HEX + log.topics[1].substring(26).toLowerCase();
-          const amount = BigInt("0x" + (log.data || _HEX).substring(2));
-          const blockNum = parseInt(log.blockNumber, 16);
-          
-          if (!allBuyers[toAddr]) {
-            allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
-          }
-          allBuyers[toAddr].total += amount;
-          allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
-        }
-        
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const pct = ((start - fromBlock) / Math.min(maxBlocks, current - fromBlock) * 100).toFixed(0);
-        process.stdout.write(`\rProgress: ${pct}% (${logCount} logs)`);
-      }
+      return res.status(200).json({
+        token: TOKEN,
+        tokenName: tokenName,
+        tokenSymbol: tokenSymbol,
+        totalTransfers: logCount,
+        uniqueWallets: sorted.length,
+        holdersCount: holdersCount || sorted.length,
+        network: network,
+        earlyBuyers: (sorted || []).slice(0, limit).map(([addr, info]) => ({
+          wallet: addr,
+          amount: Number(info.total) / 1e18,
+          block: info.firstBlock
+        }))
+      });
       
-      console.log(`\nDone. Unique wallets: ${Object.keys(allBuyers).length}`);
+    } catch (e) {
+      console.error("Explorer API failed:", e.message);
+      return res.status(500).json({ error: `Failed to fetch from explorer: ${e.message}` });
     }
     
-    const sorted = Object.entries(allBuyers)
-      .sort((a, b) => a[1].firstBlock - b[1].firstBlock);
-    
-    // Fetch token name and symbol
-    let tokenName = TOKEN;
-    let tokenSymbol = 'TOKEN';
-    let holdersCount = 0;
-
-    if (isTestnet) {
-      // Try explorer API first for testnet
-      try {
-        const resp = await fetch(`https://explorer.testnet.chain.robinhood.com/api/v2/addresses/${TOKEN.toLowerCase()}`);
-        const data = await resp.json();
-        if (data.token) {
-          tokenName = data.token.name || tokenName;
-          tokenSymbol = data.token.symbol || tokenSymbol;
-          holdersCount = parseInt(data.token.holders_count || '0');
-        }
-      } catch(e) {}
-    } else {
-      // Mainnet: use RPC
-      try {
-        const nameResult = await rpcCall("eth_call", [{
-          to: TOKEN,
-          data: _HEX + "06fdde03"
-        }], "mainnet");
-        if (nameResult && nameResult.length > 130) {
-          const fullHex = nameResult.slice(2);
-          const length = parseInt(fullHex.slice(64, 128), 16);
-          const strHex = fullHex.slice(128, 128 + length * 2);
-          tokenName = Buffer.from(strHex, 'hex').toString('utf8');
-        }
-      } catch(e) {}
-      try {
-        const symResult = await rpcCall("eth_call", [{
-          to: TOKEN,
-          data: _HEX + "95d89b41"
-        }], "mainnet");
-        if (symResult && symResult.length > 130) {
-          const fullHex = symResult.slice(2);
-          const length = parseInt(fullHex.slice(64, 128), 16);
-          const strHex = fullHex.slice(128, 128 + length * 2);
-          tokenSymbol = Buffer.from(strHex, 'hex').toString('utf8');
-        }
-      } catch(e) {}
-    }
-    
-    // Testnet shows top 5, mainnet shows top 20
-    const limit = isTestnet ? 5 : 20;
-    
-    return res.status(200).json({
-      token: TOKEN,
-      tokenName: tokenName,
-      tokenSymbol: tokenSymbol,
-      totalTransfers: logCount,
-      uniqueWallets: sorted.length,
-      holdersCount: holdersCount || sorted.length,
-      network: network,
-      earlyBuyers: (sorted || []).slice(0, limit).map(([addr, info]) => ({
-        wallet: addr,
-        amount: Number(info.total) / 1e18,
-        block: info.firstBlock
-      }))
-    });
   } catch (error) {
     console.error("Error:", error.message);
     return res.status(500).json({ error: error.message });
