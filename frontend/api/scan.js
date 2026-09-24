@@ -152,13 +152,18 @@ export default async function handler(req, res) {
     
     try {
       metadata = await getTokenMetadata(TOKEN, network);
-      creatorAddress = metaData?.creator_address_hash || null;
+      creatorAddress = metadata.creatorTxHash ? null : null; // Will get from explorer below
       
       if (metadata.creationTxHash) {
         const txResp = await explorerCall(
           `${EXPLORER_URLS[network]}/transactions/${metadata.creationTxHash}`,
           network === 'mainnet' ? MAINNET_API_KEY : null
         );
+        
+        // Extract creator address from transaction
+        if (txResp?.from?.hash) {
+          creatorAddress = txResp.from.hash.toLowerCase();
+        }
         
         if (txResp?.block_number) {
           startBlock = txResp.block_number;
