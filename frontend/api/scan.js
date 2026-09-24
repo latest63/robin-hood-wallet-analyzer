@@ -284,3 +284,4 @@ export default async function handler(req, res) {
 
 // DEBUG: BigInt fix deployed Thu Sep 24 09:12:22 PM CST 2026
 // Deploy fix 1790255945
+// Auto-deploy test
