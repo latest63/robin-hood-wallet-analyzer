@@ -58,9 +58,10 @@
 
 /* Make landing page nav buttons smaller */
 .landing-navbar .btn {
-  padding: 6px 14px;
-  font-size: 13px;
+  padding: 5px 12px;
+  font-size: 12px;
   height: auto;
+  gap: 0;
 }
 
 .nav-link {

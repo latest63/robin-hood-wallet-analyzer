@@ -52,17 +52,7 @@ export default function Landing() {
             </button>
           ) : (
             <button className="btn btn-primary" onClick={handleConnect} disabled={connecting}>
-              {connecting ? (
-                <>
-                  <Loader2 size={16} className="spin" />
-                  Connecting...
-                </>
-              ) : (
-                <>
-                  <Shield size={16} />
-                  Connect Wallet
-                </>
-              )}
+              {connecting ? 'Connecting...' : 'Connect Wallet'}
             </button>
           )}
         </div>
