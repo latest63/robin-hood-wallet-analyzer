@@ -1,12 +1,17 @@
 // RPC-based early buyers scanner (Node.js)
 const _HEX = Buffer.from([48, 120]).toString(); // "0x"
 const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-const POOL_MANAGER = _HEX + "8366a39cc670b4001a1121b8f6a443a643e40951";
 
-async function rpcCall(method, params, retries = 5) {
+const RPC_URLS = {
+  mainnet: "https://rpc.mainnet.chain.robinhood.com",
+  testnet: "https://rpc.testnet.chain.robinhood.com"
+};
+
+async function rpcCall(method, params, network = "mainnet", retries = 5) {
+  const url = RPC_URLS[network] || RPC_URLS.mainnet;
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch("https://rpc.mainnet.chain.robinhood.com", {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 })
@@ -43,21 +48,25 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   
   try {
-    const { address } = req.method === "POST" ? req.body : req.query;
+    const { address, network = "mainnet" } = req.method === "POST" ? req.body : req.query;
     if (!address?.startsWith(_HEX)) {
       return res.status(400).json({ error: "Invalid address" });
     }
+
+    // Validate network
+    const isTestnet = network === "testnet";
+    console.log(`Scanning ${isTestnet ? "testnet" : "mainnet"}:`, address);
     
     // Build address safely without using substring
     const TOKEN=toLower(address);
     console.log("Scanning:", TOKEN);
     
-    const blockHex = await rpcCall("eth_blockNumber", []);
+    const blockHex = await rpcCall("eth_blockNumber", [], network);
     const current = parseInt(blockHex, 16);
-    
-    // Use smaller range and chunks to avoid rate limits
-    const maxBlocks = 200000;
-    const fromBlock = Math.max(current - maxBlocks, 69200000);
+
+    // Use smaller range for testnet (less blocks to scan)
+    const maxBlocks = isTestnet ? 100000 : 200000;
+    const fromBlock = Math.max(current - maxBlocks, 0);
     
     const allBuyers = {};
     let logCount = 0;
@@ -70,7 +79,7 @@ export default async function handler(req, res) {
         toBlock: ethHex(end),
         address: TOKEN,
         topics: [TRANSFER_TOPIC]
-      }]);
+      }, network]);
       
       if (!logs?.length) continue;
       logCount += logs.length;
@@ -105,7 +114,7 @@ export default async function handler(req, res) {
       const nameResult = await rpcCall("eth_call", [{
         to: TOKEN,
         data: _HEX + "06fdde03"
-      }, "latest"]);
+      }, "latest", network]);
       if (nameResult) {
         // ERC20 name() returns ABI-encoded string:
         // 0x (2) + offset(64) + length(64) + string bytes
@@ -120,7 +129,7 @@ export default async function handler(req, res) {
       const symResult = await rpcCall("eth_call", [{
         to: TOKEN,
         data: _HEX + "95d89b41"
-      }, "latest"]);
+      }, "latest", network]);
       if (symResult) {
         const fullHex = symResult.slice(2);
         const length = parseInt(fullHex.slice(64, 128), 16);
@@ -129,13 +138,17 @@ export default async function handler(req, res) {
       }
     } catch(e) {}
 
+    // Testnet shows top 5, mainnet shows top 20
+    const limit = isTestnet ? 5 : 20;
+
     return res.status(200).json({
       token: TOKEN,
       tokenName: tokenName,
       tokenSymbol: tokenSymbol,
       totalTransfers: logCount,
       uniqueWallets: sorted.length,
-      earlyBuyers: (sorted || []).slice(0, 20).map(([addr, info]) => ({
+      network: network,
+      earlyBuyers: (sorted || []).slice(0, limit).map(([addr, info]) => ({
         wallet: addr,
         amount: Number(info.total) / 1e18,
         block: info.firstBlock

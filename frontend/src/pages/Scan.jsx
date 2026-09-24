@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { createCluster, addWalletsToCluster } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Search, Check, ExternalLink, Copy, TrendingUp, Users, Activity } from 'lucide-react';
+import { Loader2, Search, Check, ExternalLink, Copy, TrendingUp, Users, Activity, TestTube, Globe } from 'lucide-react';
 
 export default function Scan() {
   const { address } = useWallet();
   const navigate = useNavigate();
   const [tokenAddress, setTokenAddress] = useState('');
+  const [network, setNetwork] = useState('mainnet'); // 'mainnet' | 'testnet'
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState('');
@@ -32,7 +33,7 @@ export default function Scan() {
     setSelectedTraders(new Set());
 
     try {
-      const resp = await fetch(`/api/scan?address=${tokenAddress}`);
+      const resp = await fetch(`/api/scan?address=${tokenAddress}&network=${network}`);
       const result = await resp.json();
       
       if (result.error) {
@@ -46,6 +47,7 @@ export default function Scan() {
       const rawSymbol = result.tokenSymbol?.replace(/[\x00-\x1F]/g, '').trim();
       const tokenName = rawName || result.token?.substring(2, 10) + '...';
       const tokenSymbol = rawSymbol || 'TOKEN';
+      const isTestnet = result.network === 'testnet';
 
       setTokenInfo({
         name: tokenName,
@@ -53,7 +55,8 @@ export default function Scan() {
         price: null,
         holders_count: result.uniqueWallets || 0,
         totalTransfers: result.totalTransfers || 0,
-        address: result.token
+        address: result.token,
+        network: result.network
       });
 
       const earlyData = result.earlyBuyers || [];
@@ -154,8 +157,23 @@ export default function Scan() {
     <div className="fade-in">
       <div className="flex items-center justify-between mb-6">
         <h1 style={{ fontSize: 28, fontWeight: 800 }}>Token Scanner</h1>
-        <div className="text-sm text-muted">
-          Robin Hood Chain • Mainnet
+
+        {/* Network Toggle */}
+        <div className="network-toggle">
+          <button
+            className={`network-btn ${network === 'mainnet' ? 'active' : ''}`}
+            onClick={() => setNetwork('mainnet')}
+          >
+            <Globe size={14} />
+            Mainnet
+          </button>
+          <button
+            className={`network-btn ${network === 'testnet' ? 'active' : ''}`}
+            onClick={() => setNetwork('testnet')}
+          >
+            <TestTube size={14} />
+            Testnet
+          </button>
         </div>
       </div>
 
@@ -208,6 +226,10 @@ export default function Scan() {
             </div>
           </div>
           <div className="flex gap-3 flex-wrap items-center">
+            <span className={`badge ${tokenInfo.network === 'testnet' ? 'badge-warning' : 'badge-primary'}`}>
+              {tokenInfo.network === 'testnet' ? <TestTube size={12} /> : <Globe size={12} />}
+              {tokenInfo.network === 'testnet' ? 'Testnet' : 'Mainnet'}
+            </span>
             <span className="badge badge-primary">
               <Users size={12} />
               {tokenInfo.holders_count} Holders
@@ -217,7 +239,7 @@ export default function Scan() {
               {tokenInfo.totalTransfers} Transfers
             </span>
             <a
-              href={`https://robinhoodscan.com/token/${tokenInfo.address}`}
+              href={`https://${tokenInfo.network === 'testnet' ? 'explorer.testnet' : 'robinhoodscan'}.com/token/${tokenInfo.address}`}
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"

@@ -977,6 +977,43 @@ h1, h2, h3, h4, h5, h6 {
   gap: 8px;
 }
 
+/* Network Toggle */
+.network-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-elevated);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.network-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+  font-family: inherit;
+}
+
+.network-btn:hover {
+  color: var(--text);
+  background: var(--bg-glass);
+}
+
+.network-btn.active {
+  background: var(--accent-gradient);
+  color: white;
+  box-shadow: 0 2px 8px var(--primary-glow);
+}
+
 /* Search Box */
 .search-box {
   background: rgba(16, 9, 5, 0.95);
