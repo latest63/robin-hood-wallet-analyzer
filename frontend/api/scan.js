@@ -110,45 +110,48 @@ export default async function handler(req, res) {
     let logCount = 0;
     
     if (isTestnet) {
-      // Use Explorer API for testnet to handle old tokens with full history
-      try {
-        const result = await scanWithExplorer(TOKEN, "testnet");
-        allBuyers = result.allBuyers;
-        logCount = result.logCount;
-      } catch (e) {
-        console.error("Explorer API failed, falling back to RPC:", e.message);
-        // Fallback to RPC with minimal range
-        const blockHex = await rpcCall("eth_blockNumber", [], "testnet");
-        const current = parseInt(blockHex, 16);
-        const maxBlocks = 50000;
-        const fromBlock = Math.max(current - maxBlocks, 0);
+      // Testnet: scan from block 0 to capture all historical data
+      const blockHex = await rpcCall("eth_blockNumber", [], "testnet");
+      const current = parseInt(blockHex, 16);
+      console.log(`Testnet current block: ${current}`);
+      
+      // Scan from block 0 to current in chunks
+      const chunkSize = 10000;
+      const startTime = Date.now();
+      
+      for (let start = 0; start <= current; start += chunkSize) {
+        const end = Math.min(start + chunkSize - 1, current);
+        const logs = await rpcCall("eth_getLogs", [{
+          fromBlock: ethHex(start),
+          toBlock: ethHex(end),
+          address: TOKEN,
+          topics: [TRANSFER_TOPIC]
+        }, "testnet"]);
         
-        for (let start = fromBlock; start < current && start < fromBlock + maxBlocks; start += 2000) {
-          const end = Math.min(start + 2000, current, fromBlock + maxBlocks);
-          const logs = await rpcCall("eth_getLogs", [{
-            fromBlock: ethHex(start),
-            toBlock: ethHex(end),
-            address: TOKEN,
-            topics: [TRANSFER_TOPIC]
-          }, "testnet"]);
+        if (!logs?.length) continue;
+        logCount += logs.length;
+        
+        for (const log of logs) {
+          const toAddr = _HEX + log.topics[2].substring(26).toLowerCase();
+          const fromAddr = _HEX + log.topics[1].substring(26).toLowerCase();
+          const amount = BigInt("0x" + (log.data || _HEX).substring(2));
+          const blockNum = parseInt(log.blockNumber, 16);
           
-          if (!logs?.length) continue;
-          logCount += logs.length;
-          
-          for (const log of logs) {
-            const toAddr = _HEX + log.topics[2].substring(26).toLowerCase();
-            const fromAddr = _HEX + log.topics[1].substring(26).toLowerCase();
-            const amount = BigInt("0x" + (log.data || _HEX).substring(2));
-            const blockNum = parseInt(log.blockNumber, 16);
-            
-            if (!allBuyers[toAddr]) {
-              allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
-            }
-            allBuyers[toAddr].total += amount;
-            allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
+          if (!allBuyers[toAddr]) {
+            allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
           }
+          allBuyers[toAddr].total += amount;
+          allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
+        }
+        
+        // Progress report every 100K blocks or 10s
+        if ((start % 100000 === 0 || (Date.now() - startTime) > 10000) && start > 0) {
+          const pct = (start / current * 100).toFixed(1);
+          console.log(`Progress: ${pct}% (${logCount} logs)`);
         }
       }
+      
+      console.log(`Testnet scan complete. Unique wallets: ${Object.keys(allBuyers).length}, transfers: ${logCount}`);
     } else {
       // Mainnet: use RPC scan
       const blockHex = await rpcCall("eth_blockNumber", [], "mainnet");
