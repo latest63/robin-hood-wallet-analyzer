@@ -115,10 +115,10 @@ export default async function handler(req, res) {
       const current = parseInt(blockHex, 16);
       console.log(`Testnet current block: ${current}`);
       
-      // Testnet has limited history - scan from ~73M where token first appeared
-      // Data confirmed in blocks 0x4700000-0x7600000 (73M-76M)
-      const START_BLOCK = 0x4700000; // 73081856
-      const chunkSize = 50000;
+      // Testnet: scan from block 73M (where token data exists) to current
+      // Data confirmed in blocks 0x4700000-0x7600000 (73M-76M) for this token
+      const START_BLOCK = 0x7400000; // 122,000,000 - start where we found data
+      const chunkSize = 10000;
       const startTime = Date.now();
       
       for (let start = START_BLOCK; start <= current; start += chunkSize) {
