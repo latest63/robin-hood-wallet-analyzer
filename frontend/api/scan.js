@@ -213,6 +213,7 @@ export default async function handler(req, res) {
         if (data.token) {
           tokenName = data.token.name || tokenName;
           tokenSymbol = data.token.symbol || tokenSymbol;
+          holdersCount = parseInt(data.token.holders_count || '0');
         }
       } catch(e) {}
     } else {
@@ -252,6 +253,7 @@ export default async function handler(req, res) {
       tokenSymbol: tokenSymbol,
       totalTransfers: logCount,
       uniqueWallets: sorted.length,
+      holdersCount: holdersCount || sorted.length,
       network: network,
       earlyBuyers: (sorted || []).slice(0, limit).map(([addr, info]) => ({
         wallet: addr,
