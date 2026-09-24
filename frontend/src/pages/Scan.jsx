@@ -243,7 +243,16 @@ export default function Scan() {
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-secondary"
-              style={{ padding: '8px 12px', fontSize: 13, whiteSpace: 'nowrap', flexShrink: 0 }}
+              style={{ 
+                padding: '8px 12px', 
+                fontSize: 13, 
+                whiteSpace: 'nowrap', 
+                flexShrink: 0,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 120
+              }}
             >
               <ExternalLink size={14} />
               Explorer
