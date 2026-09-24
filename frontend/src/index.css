@@ -53,7 +53,14 @@
 .landing-nav-links {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 16px;
+}
+
+/* Make landing page nav buttons smaller */
+.landing-navbar .btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  height: auto;
 }
 
 .nav-link {
