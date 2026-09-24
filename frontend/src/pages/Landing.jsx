@@ -82,30 +82,16 @@ export default function Landing() {
           <div className="hero-actions">
             {isConnected ? (
               <>
-                <button className="btn btn-primary btn-large" onClick={() => navigate('/scan')}>
-                  <Scan size={20} />
+                <button className="btn btn-primary" onClick={() => navigate('/scan')}>
+                  <Scan size={16} />
                   Start Scanning
                 </button>
-                <button className="btn btn-secondary btn-large" onClick={() => navigate('/dashboard')}>
-                  <TrendingUp size={20} />
+                <button className="btn btn-secondary" onClick={() => navigate('/dashboard')}>
+                  <TrendingUp size={16} />
                   View Dashboard
                 </button>
               </>
-            ) : (
-              <button className="btn btn-primary btn-large" onClick={handleConnect} disabled={connecting}>
-                {connecting ? (
-                  <>
-                    <Loader2 size={20} className="spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <Shield size={20} />
-                    Connect Wallet to Get Started
-                  </>
-                )}
-              </button>
-            )}
+            ) : null}
           </div>
           
           <div className="hero-stats">
@@ -201,24 +187,17 @@ export default function Landing() {
         <p className="cta-text">
           Join thousands of traders using FNF Radar to discover profitable opportunities on Robinhood Chain.
         </p>
-        <button className="btn btn-primary btn-large" onClick={handleConnect} disabled={connecting || isReconnecting}>
-          {connecting ? (
-            <>
-              <Loader2 size={20} className="spin" />
-              Connecting...
-            </>
-          ) : isConnected ? (
-            <>
-              <Scan size={20} />
-              Start Scanning Now
-            </>
-          ) : (
-            <>
-              <Shield size={20} />
-              Connect Wallet & Start Scanning
-            </>
-          )}
-        </button>
+        {isConnected ? (
+          <button className="btn btn-primary" onClick={() => navigate('/scan')}>
+            <Scan size={16} />
+            Start Scanning Now
+          </button>
+        ) : (
+          <button className="btn btn-secondary" onClick={() => navigate('/scan')}>
+            <Scan size={16} />
+            Go to Scan Page
+          </button>
+        )}
       </section>
     </div>
   );
