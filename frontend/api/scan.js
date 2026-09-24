@@ -210,11 +210,12 @@ export default async function handler(req, res) {
         const amount = BigInt("0x" + (log.data || _HEX).substring(2));
         const blockNum = parseInt(log.blockNumber, 16);
         
-        // Only count transfers from creator or burn address (mint)
+        // Only count transfers where creator/mint is the SENDER
         if (fromAddr !== creatorAddress && fromAddr !== '0x0000000000000000000000000000000000000000') {
           continue;
         }
         
+        // Track direct recipients from creator
         if (!allBuyers[toAddr]) {
           allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
         }
