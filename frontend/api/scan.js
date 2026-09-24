@@ -1,4 +1,4 @@
-// Dynamic token creation block discovery + scan
+// Dynamic token creation block discovery with API key support
 const _HEX = Buffer.from([48, 120]).toString();
 
 const RPC_URLS = {
@@ -10,6 +10,9 @@ const EXPLORER_URLS = {
   mainnet: "https://explorer.mainnet.chain.robinhood.com/api/v2",
   testnet: "https://explorer.testnet.chain.robinhood.com/api/v2"
 };
+
+// Mainnet API key (from user)
+const MAINNET_API_KEY = "proapi_crwp7Uu7Sba1wSCTkzGC51AX3UU7FiS7FlhohLzduPOdtchMy2b7oNY28Soi66uPi_b9hCiI";
 
 function toLower(hex) {
   return hex.toLowerCase();
@@ -37,10 +40,15 @@ async function rpcCall(method, params, network = "mainnet", retries = 5) {
   }
 }
 
-async function explorerCall(endpoint, retries = 3) {
+async function explorerCall(endpoint, apiKey = null, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch(endpoint);
+      const headers = { "Content-Type": "application/json" };
+      if (apiKey) {
+        headers["Authorization"] = `Basic ${apiKey}`;
+      }
+      
+      const res = await fetch(endpoint, { headers });
       if (res.status === 429) {
         const delay = 3000 * (i + 1);
         await new Promise(r => setTimeout(r, delay));
@@ -60,15 +68,14 @@ function ethHex(val) {
   return _HEX + h;
 }
 
-// Find token creation block via binary search (works on mainnet & testnet)
+// Binary search fallback if explorer fails
 async function findCreationBlockBinarySearch(tokenAddress, currentBlock, network) {
-  console.log(`Binary searching for contract creation...`);
+  console.log("Binary searching for contract creation...");
   
   let low = 0;
   let high = currentBlock;
   let creationBlock = currentBlock;
   
-  // Safety: limit iterations to ~30 (log2 of 1B blocks)
   const maxIterations = 32;
   let iteration = 0;
   
@@ -79,17 +86,10 @@ async function findCreationBlockBinarySearch(tokenAddress, currentBlock, network
     const code = await rpcCall("eth_getCode", [tokenAddress, ethHex(mid)], network);
     
     if (code && code !== '0x' && code.length > 2) {
-      // Contract existed at this block, try earlier
       creationBlock = mid;
       high = mid - 1;
     } else {
-      // Contract didn't exist yet, try later
       low = mid + 1;
-    }
-    
-    // Progress report every 1M blocks searched
-    if (mid % 1000000 === 0) {
-      console.log(`  Checked block ${mid.toLocaleString()}, contract ${code && code !== '0x' ? 'EXISTS' : 'NOT FOUND'}`);
     }
   }
   
@@ -97,18 +97,24 @@ async function findCreationBlockBinarySearch(tokenAddress, currentBlock, network
   return creationBlock;
 }
 
-// Get token metadata from explorer
+// Get token metadata from explorer (with API key if available)
 async function getTokenMetadata(tokenAddress, network) {
+  const apiKey = network === 'mainnet' ? MAINNET_API_KEY : null;
+  
   try {
-    const metaData = await explorerCall(`${EXPLORER_URLS[network]}/addresses/${tokenAddress}`);
+    const metaData = await explorerCall(
+      `${EXPLORER_URLS[network]}/addresses/${tokenAddress}`,
+      apiKey
+    );
     return {
       name: metaData?.name || "TOKEN",
       symbol: metaData?.token?.symbol || "",
-      holders: parseInt(metaData?.token?.holders_count) || 0
+      holders: parseInt(metaData?.token?.holders_count) || 0,
+      creationTxHash: metaData?.creation_transaction_hash
     };
   } catch (e) {
     console.log(`Metadata fetch failed: ${e.message}`);
-    return { name: "TOKEN", symbol: "", holders: 0 };
+    return { name: "TOKEN", symbol: "", holders: 0, creationTxHash: null };
   }
 }
 
@@ -128,7 +134,7 @@ export default async function handler(req, res) {
     const isTestnet = network === "testnet";
     console.log(`\n=== Scanning ${network}: ${address} ===`);
     
-    const TOKEN = toLower(address);
+    const TOKEN=toLowe...);
     const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
     
     // Get current block
@@ -139,21 +145,22 @@ export default async function handler(req, res) {
     // Discover token creation block
     console.log("\n[1/3] Discovering token creation block...");
     
-    // Try explorer first (faster for testnet)
+    // Try explorer first (faster with API key)
     let startBlock = null;
+    let metadata = { name: "TOKEN", symbol: "", holders: 0 };
+    
     try {
-      const metaResp = await fetch(`${EXPLORER_URLS[network]}/addresses/${TOKEN}`);
-      if (metaResp.ok) {
-        const metaData = await metaResp.json();
-        if (metaData?.creation_transaction_hash) {
-          const txResp = await fetch(`${EXPLORER_URLS[network]}/transactions/${metaData.creation_transaction_hash}`);
-          if (txResp.ok) {
-            const txData = await txResp.json();
-            if (txData?.block_number) {
-              startBlock = txData.block_number;
-              console.log(`✓ Found creation block via explorer: ${startBlock.toLocaleString()}`);
-            }
-          }
+      metadata = await getTokenMetadata(TOKEN, network);
+      
+      if (metadata.creationTxHash) {
+        const txResp = await explorerCall(
+          `${EXPLORER_URLS[network]}/transactions/${metadata.creationTxHash}`,
+          network === 'mainnet' ? MAINNET_API_KEY : null
+        );
+        
+        if (txResp?.block_number) {
+          startBlock = txResp.block_number;
+          console.log(`✓ Found creation block via explorer: ${startBlock.toLocaleString()}`);
         }
       }
     } catch (e) {
@@ -166,13 +173,8 @@ export default async function handler(req, res) {
       startBlock = await findCreationBlockBinarySearch(TOKEN, currentBlock, network);
     }
     
-    // Get token metadata
-    console.log("\n[2/3] Fetching token metadata...");
-    const metadata = await getTokenMetadata(TOKEN, network);
-    console.log(`Token: ${metadata.name} (${metadata.symbol}) - ${metadata.holders} holders`);
-    
     // Scan transfers
-    console.log(`\n[3/3] Scanning blocks ${startBlock.toLocaleString()} to ${currentBlock.toLocaleString()}...`);
+    console.log(`\n[2/3] Scanning blocks ${startBlock.toLocaleString()} to ${currentBlock.toLocaleString()}...`);
     
     let allBuyers = {};
     let logCount = 0;
