@@ -249,6 +249,30 @@ export default async function handler(req, res) {
       }))
     };
     
+    // Test serialization before sending
+    try {
+      const testJson = JSON.stringify(result);
+      console.log('Serialization test OK, length:', testJson.length);
+    } catch (e) {
+      console.error('JSON serialization failed:', e.message);
+      // Debug: check each field
+      for (const key of Object.keys(result)) {
+        const val = result[key];
+        if (val && typeof val === 'object') {
+          for (const subKey of Object.keys(val)) {
+            const subVal = val[subKey];
+            if (typeof subVal === 'bigint') {
+              console.error(`  Found BigInt at ${key}.${subKey}`);
+              val[subKey] = subVal.toString();
+            }
+          }
+        } else if (typeof val === 'bigint') {
+          console.error(`  Found BigInt at ${key}`);
+          result[key] = val.toString();
+        }
+      }
+    }
+    
     return res.status(200).json(result);
     
   } catch (error) {
