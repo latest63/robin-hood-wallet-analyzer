@@ -218,11 +218,11 @@ export default async function handler(req, res) {
     
     console.log(`\nScan complete: ${logCount} transfers from ${Object.keys(allBuyers).length} unique wallets`);
     
-    // Format results
+    // Format results (convert BigInt to string for JSON)
     const buyers = Object.entries(allBuyers)
       .map(([addr, data]) => ({
         address: addr,
-        total: data.total.toString(),
+        total: data.total.toString(),  // Convert BigInt to string
         firstBlock: data.firstBlock,
         sourceCount: Object.values(data.sources).reduce((a, b) => a + b, 0)
       }))
