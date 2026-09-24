@@ -135,7 +135,7 @@ export default async function handler(req, res) {
     const isTestnet = network === "testnet";
     console.log(`\n=== Scanning ${network}: ${address} ===`);
     
-    const TOKEN=toLower(address);
+    const TOKEN = toLower(address); // Full lowercase address for RPC
     const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
     
     // Get current block
