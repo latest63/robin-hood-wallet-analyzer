@@ -115,11 +115,12 @@ export default async function handler(req, res) {
       const current = parseInt(blockHex, 16);
       console.log(`Testnet current block: ${current}`);
       
-      // Scan from block 0 to current in chunks
-      const chunkSize = 10000;
+      // Testnet has limited history - scan from ~74M where token first appeared
+      const START_BLOCK = 74266000;
+      const chunkSize = 5000;
       const startTime = Date.now();
       
-      for (let start = 0; start <= current; start += chunkSize) {
+      for (let start = START_BLOCK; start <= current; start += chunkSize) {
         const end = Math.min(start + chunkSize - 1, current);
         const logs = await rpcCall("eth_getLogs", [{
           fromBlock: ethHex(start),
