@@ -148,9 +148,11 @@ export default async function handler(req, res) {
     // Try explorer first (faster with API key)
     let startBlock = null;
     let metadata = { name: "TOKEN", symbol: "", holders: 0 };
+    let creatorAddress = null;
     
     try {
       metadata = await getTokenMetadata(TOKEN, network);
+      creatorAddress = metaData?.creator_address_hash || null;
       
       if (metadata.creationTxHash) {
         const txResp = await explorerCall(
@@ -207,6 +209,11 @@ export default async function handler(req, res) {
         const fromAddr = _HEX + log.topics[1].substring(26).toLowerCase();
         const amount = BigInt("0x" + (log.data || _HEX).substring(2));
         const blockNum = parseInt(log.blockNumber, 16);
+        
+        // Only count transfers from creator or burn address (mint)
+        if (fromAddr !== creatorAddress && fromAddr !== '0x0000000000000000000000000000000000000000') {
+          continue;
+        }
         
         if (!allBuyers[toAddr]) {
           allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
