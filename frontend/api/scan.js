@@ -110,11 +110,12 @@ async function getTokenMetadata(tokenAddress, network) {
       name: metaData?.name || "TOKEN",
       symbol: metaData?.token?.symbol || "",
       holders: parseInt(metaData?.token?.holders_count) || 0,
-      creationTxHash: metaData?.creation_transaction_hash
+      creationTxHash: metaData?.creation_transaction_hash,
+      creatorAddress: metaData?.creator_address_hash // <-- ADD THIS
     };
   } catch (e) {
     console.log(`Metadata fetch failed: ${e.message}`);
-    return { name: "TOKEN", symbol: "", holders: 0, creationTxHash: null };
+    return { name: "TOKEN", symbol: "", holders: 0, creationTxHash: null, creatorAddress: null };
   }
 }
 
@@ -152,18 +153,14 @@ export default async function handler(req, res) {
     
     try {
       metadata = await getTokenMetadata(TOKEN, network);
-      creatorAddress = metadata.creatorTxHash ? null : null; // Will get from explorer below
+      creatorAddress = metadata.creatorAddress; // Get directly from address endpoint
       
-      if (metadata.creationTxHash) {
+      if (metadata.creationTxHash && metadata.creatorAddress) {
+        // Get block from transaction
         const txResp = await explorerCall(
           `${EXPLORER_URLS[network]}/transactions/${metadata.creationTxHash}`,
           network === 'mainnet' ? MAINNET_API_KEY : null
         );
-        
-        // Extract creator address from transaction
-        if (txResp?.from?.hash) {
-          creatorAddress = txResp.from.hash.toLowerCase();
-        }
         
         if (txResp?.block_number) {
           startBlock = txResp.block_number;
