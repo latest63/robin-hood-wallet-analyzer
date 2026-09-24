@@ -65,7 +65,8 @@ export default async function handler(req, res) {
     const current = parseInt(blockHex, 16);
 
     // Use smaller range for testnet (less blocks to scan)
-    const maxBlocks = isTestnet ? 150000000 : 200000;
+    // Cap at 10M blocks to avoid timeouts on very old tokens
+    const maxBlocks = isTestnet ? 10000000 : 200000;
     const fromBlock = Math.max(current - maxBlocks, 0);
     
     const allBuyers = {};
