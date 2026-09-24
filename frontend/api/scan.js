@@ -110,14 +110,13 @@ export default async function handler(req, res) {
     let logCount = 0;
     
     if (isTestnet) {
-      // Testnet: scan from block 0 to capture all historical data
+      // Testnet: scan from block 0x7000000 (117.9M) to capture all historical data
       const blockHex = await rpcCall("eth_blockNumber", [], "testnet");
       const current = parseInt(blockHex, 16);
       console.log(`Testnet current block: ${current}`);
       
-      // Testnet: scan from block 73M (where token data exists) to current
-      // Data confirmed in blocks 0x4700000-0x7600000 (73M-76M) for this token
-      const START_BLOCK = 0x7400000; // 122,000,000 - start where we found data
+      // Start from ~118M blocks to cover early token deployments
+      const START_BLOCK = 0x7000000; // 117,964,800
       const chunkSize = 10000;
       const startTime = Date.now();
       
