@@ -1,9 +1,14 @@
-// RPC-based early buyers scanner (Node.js)
+// RPC-based early buyers scanner (Node.js) with dynamic creation block detection
 const _HEX = Buffer.from([48, 120]).toString(); // "0x"
 
 const RPC_URLS = {
   mainnet: "https://rpc.mainnet.chain.robinhood.com",
   testnet: "https://rpc.testnet.chain.robinhood.com"
+};
+
+const EXPLORER_URLS = {
+  mainnet: "https://explorer.mainnet.chain.robinhood.com/api/v2",
+  testnet: "https://explorer.testnet.chain.robinhood.com/api/v2"
 };
 
 function toLower(hex) {
@@ -32,9 +37,55 @@ async function rpcCall(method, params, network = "mainnet", retries = 5) {
   }
 }
 
+async function explorerCall(endpoint, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(endpoint);
+      if (res.status === 429) {
+        const delay = 3000 * (i + 1);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      return await res.json();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+}
+
 function ethHex(val) {
   const h = BigInt(val).toString(16);
   return _HEX + h;
+}
+
+// Find token creation block using explorer API
+async function findCreationBlock(tokenAddress, network) {
+  try {
+    const explorerUrl = EXPLORER_URLS[network];
+    const addressData = await explorerCall(`${explorerUrl}/addresses/${tokenAddress}`);
+    
+    if (addressData?.creation_transaction_hash) {
+      const txData = await explorerCall(`${explorerUrl}/transactions/${addressData.creation_transaction_hash}`);
+      if (txData?.block_number) {
+        console.log(`Token created at block ${txData.block_number}`);
+        return txData.block_number;
+      }
+    }
+    
+    // Fallback: try to find first token transfer
+    const transferData = await explorerCall(`${explorerUrl}/addresses/${tokenAddress}/token-transfers`);
+    if (transferData?.items?.length > 0) {
+      const oldestTransfer = transferData.items.sort((a, b) => a.block_number - b.block_number)[0];
+      console.log(`No creation tx found, using first transfer at block ${oldestTransfer.block_number}`);
+      return oldestTransfer.block_number;
+    }
+    
+    return null;
+  } catch (e) {
+    console.log(`Explorer lookup failed: ${e.message}`);
+    return null;
+  }
 }
 
 export default async function handler(req, res) {
@@ -56,140 +107,110 @@ export default async function handler(req, res) {
     const TOKEN = toLower(address);
     const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
     
-    let allBuyers = {};
-    let logCount = 0;
-    
     // Get current block
     const blockHex = await rpcCall("eth_blockNumber", [], network);
-    const current = parseInt(blockHex, 16);
-    console.log(`${network} current block: ${current}`);
+    const currentBlock = parseInt(blockHex, 16);
+    console.log(`${network} current block: ${currentBlock}`);
     
-    if (isTestnet) {
-      // Testnet: scan from 117M blocks
-      const START_BLOCK = 0x7000000; // 117,964,800
-      const chunkSize = 10000;
-      
-      for (let start = START_BLOCK; start <= current; start += chunkSize) {
-        const end = Math.min(start + chunkSize - 1, current);
-        const logs = await rpcCall("eth_getLogs", [{
-          fromBlock: ethHex(start),
-          toBlock: ethHex(end),
-          address: TOKEN,
-          topics: [TRANSFER_TOPIC]
-        }], network);
-        
-        if (!logs?.length) continue;
-        logCount += logs.length;
-        
-        for (const log of logs) {
-          const toAddr = _HEX + log.topics[2].substring(26).toLowerCase();
-          const fromAddr = _HEX + log.topics[1].substring(26).toLowerCase();
-          const amount = BigInt("0x" + (log.data || _HEX).substring(2));
-          const blockNum = parseInt(log.blockNumber, 16);
-          
-          if (!allBuyers[toAddr]) {
-            allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
-          }
-          allBuyers[toAddr].total += amount;
-          allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
-        }
-      }
+    // Try to find exact creation block from explorer
+    let startBlock = null;
+    const creationBlock = await findCreationBlock(TOKEN, network);
+    
+    if (creationBlock) {
+      startBlock = creationBlock;
+      console.log(`Using discovery range: ${startBlock} to ${currentBlock}`);
+    } else if (isTestnet) {
+      // Fallback for testnet: wide range scan
+      startBlock = Math.max(currentBlock - 10000000, 0); // Last 10M blocks
+      console.log(`No creation block found, using fallback range: ${startBlock} to ${currentBlock}`);
     } else {
       // Mainnet: scan last 300K blocks
-      const START_BLOCK = Math.max(current - 300000, 69000000);
-      const chunkSize = 2000;
+      startBlock = Math.max(currentBlock - 300000, 69000000);
+      console.log(`No creation block found, using fallback range: ${startBlock} to ${currentBlock}`);
+    }
+    
+    let allBuyers = {};
+    let logCount = 0;
+    let chunkSize = isTestnet ? 5000 : 2000;
+    
+    console.log(`Scanning ${((currentBlock - startBlock) / 1000000).toFixed(2)}M blocks...`);
+    
+    for (let start = startBlock; start <= currentBlock; start += chunkSize) {
+      const end = Math.min(start + chunkSize - 1, currentBlock);
       
-      for (let start = START_BLOCK; start < current; start += chunkSize) {
-        const end = Math.min(start + chunkSize, current);
-        const logs = await rpcCall("eth_getLogs", [{
-          fromBlock: ethHex(start),
-          toBlock: ethHex(end),
-          address: TOKEN,
-          topics: [TRANSFER_TOPIC]
-        }], network);
+      // Progress report every 500K blocks
+      if (start % 500000 === 0 && start > 0) {
+        console.log(`  Scanned ${((start - startBlock) / 1000000).toFixed(2)}M blocks, ${logCount} logs so far`);
+      }
+      
+      const logs = await rpcCall("eth_getLogs", [{
+        fromBlock: ethHex(start),
+        toBlock: ethHex(end),
+        address: TOKEN,
+        topics: [TRANSFER_TOPIC]
+      }], network);
+      
+      if (!logs?.length) continue;
+      logCount += logs.length;
+      
+      for (const log of logs) {
+        const toAddr = _HEX + log.topics[2].substring(26).toLowerCase();
+        const fromAddr = _HEX + log.topics[1].substring(26).toLowerCase();
+        const amount = BigInt("0x" + (log.data || _HEX).substring(2));
+        const blockNum = parseInt(log.blockNumber, 16);
         
-        if (!logs?.length) continue;
-        logCount += logs.length;
-        
-        for (const log of logs) {
-          const toAddr = _HEX + log.topics[2].substring(26).toLowerCase();
-          const fromAddr = _HEX + log.topics[1].substring(26).toLowerCase();
-          const amount = BigInt("0x" + (log.data || _HEX).substring(2));
-          const blockNum = parseInt(log.blockNumber, 16);
-          
-          if (!allBuyers[toAddr]) {
-            allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
-          }
-          allBuyers[toAddr].total += amount;
-          allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
+        if (!allBuyers[toAddr]) {
+          allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
         }
+        allBuyers[toAddr].total += amount;
+        allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
       }
     }
     
-    // Get token name/symbol from RPC
-    let tokenName = TOKEN;
-    let tokenSymbol = 'TOKEN';
-    let holdersCount = Object.keys(allBuyers).length;
+    console.log(`Total logs: ${logCount}`);
     
-    // Try to get token info from explorer API
+    // Get token metadata from explorer
+    let tokenName = "TOKEN";
+    let tokenSymbol = "";
+    let holdersCount = 0;
+    
     try {
-      const explorerUrl = isTestnet 
-        ? `https://explorer.testnet.chain.robinhood.com/api/v2/addresses/${TOKEN}`
-        : null;
-      
-      if (explorerUrl) {
-        const resp = await fetch(explorerUrl);
-        const data = await resp.json();
-        if (data.token) {
-          tokenName = data.token.name || tokenName;
-          tokenSymbol = data.token.symbol || tokenSymbol;
-          holdersCount = parseInt(data.token.holders_count || holdersCount);
-        }
-      }
-    } catch(e) {
-      // Fallback to RPC for name/symbol
-      try {
-        const nameResult = await rpcCall("eth_call", [{ to: TOKEN, data: _HEX + "06fdde03" }], network);
-        if (nameResult && nameResult.length > 130) {
-          const fullHex = nameResult.slice(2);
-          const length = parseInt(fullHex.slice(64, 128), 16);
-          const strHex = fullHex.slice(128, 128 + length * 2);
-          tokenName = Buffer.from(strHex, 'hex').toString('utf8');
-        }
-      } catch(e) {}
-      try {
-        const symResult = await rpcCall("eth_call", [{ to: TOKEN, data: _HEX + "95d89b41" }], network);
-        if (symResult && symResult.length > 130) {
-          const fullHex = symResult.slice(2);
-          const length = parseInt(fullHex.slice(64, 128), 16);
-          const strHex = fullHex.slice(128, 128 + length * 2);
-          tokenSymbol = Buffer.from(strHex, 'hex').toString('utf8');
-        }
-      } catch(e) {}
+      const metaData = await explorerCall(`${EXPLORER_URLS[network]}/addresses/${TOKEN}`);
+      if (metaData?.name) tokenName = metaData.name;
+      if (metaData?.token?.symbol) tokenSymbol = metaData.token.symbol;
+      if (metaData?.token?.holders_count) holdersCount = parseInt(metaData.token.holders_count);
+    } catch (e) {
+      console.log(`Metadata fetch failed: ${e.message}`);
     }
     
-    const sorted = Object.entries(allBuyers)
-      .sort((a, b) => a[1].firstBlock - b[1].firstBlock);
-    
-    // Testnet shows top 5, mainnet shows top 20
-    const limit = isTestnet ? 5 : 20;
-    
-    return res.status(200).json({
-      token: TOKEN,
-      tokenName: tokenName,
-      tokenSymbol: tokenSymbol,
-      totalTransfers: logCount,
-      uniqueWallets: sorted.length,
-      holdersCount: holdersCount,
-      network: network,
-      earlyBuyers: (sorted || []).slice(0, limit).map(([addr, info]) => ({
-        wallet: addr,
-        amount: Number(info.total) / 1e18,
-        block: info.firstBlock
+    // Convert to sorted array
+    const buyers = Object.entries(allBuyers)
+      .map(([address, data]) => ({
+        address,
+        total: data.total.toString(),
+        firstBlock: data.firstBlock,
+        sources: Object.keys(data.sources)
       }))
-    });
+      .sort((a, b) => b.total - a.total)
+      .slice(0, isTestnet ? 5 : 20);
+    
+    const result = {
+      address: address,
+      name: tokenName,
+      symbol: tokenSymbol,
+      holders: holdersCount,
+      totalTransfers: logCount,
+      totalBuyers: Object.keys(allBuyers).length,
+      startBlock,
+      endBlock: currentBlock,
+      topBuyers: buyers
+    };
+    
+    console.log(`Scan complete: ${logCount} transfers, ${Object.keys(allBuyers).length} unique wallets`);
+    return res.status(200).json(result);
+    
   } catch (error) {
-    console.error("Error:", error.message);
+    console.error("Scan error:", error);
     return res.status(500).json({ error: error.message });
   }
 }
