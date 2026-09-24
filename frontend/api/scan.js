@@ -222,11 +222,15 @@ export default async function handler(req, res) {
     const buyers = Object.entries(allBuyers)
       .map(([addr, data]) => ({
         address: addr,
-        total: data.total.toString(),  // Convert BigInt to string
+        total: data.total.toString(),
         firstBlock: data.firstBlock,
         sourceCount: Object.values(data.sources).reduce((a, b) => a + b, 0)
       }))
-      .sort((a, b) => BigInt(b.total) - BigInt(a.total))
+      .sort((a, b) => {
+        const aTotal = BigInt(a.total);
+        const bTotal = BigInt(b.total);
+        return bTotal > aTotal ? 1 : bTotal < aTotal ? -1 : 0;
+      })
       .slice(0, isTestnet ? 5 : 20);
     
     const result = {
