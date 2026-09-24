@@ -126,7 +126,7 @@ export default async function handler(req, res) {
           toBlock: ethHex(end),
           address: TOKEN,
           topics: [TRANSFER_TOPIC]
-        }, "testnet"]);
+        }], "testnet");
         
         if (!logs?.length) continue;
         logCount += logs.length;
@@ -170,7 +170,7 @@ export default async function handler(req, res) {
           toBlock: ethHex(end),
           address: TOKEN,
           topics: [TRANSFER_TOPIC]
-        }, "mainnet"]);
+        }], "mainnet");
         
         if (!logs?.length) continue;
         logCount += logs.length;
