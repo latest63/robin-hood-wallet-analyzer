@@ -201,33 +201,47 @@ export default async function handler(req, res) {
     const sorted = Object.entries(allBuyers)
       .sort((a, b) => a[1].firstBlock - b[1].firstBlock);
     
-    // Fetch token name and symbol from RPC
+    // Fetch token name and symbol
     let tokenName = TOKEN;
     let tokenSymbol = 'TOKEN';
-    try {
-      const nameResult = await rpcCall("eth_call", [{
-        to: TOKEN,
-        data: _HEX + "06fdde03"
-      }, "latest", "mainnet"]);
-      if (nameResult && nameResult.length > 130) {
-        const fullHex = nameResult.slice(2);
-        const length = parseInt(fullHex.slice(64, 128), 16);
-        const strHex = fullHex.slice(128, 128 + length * 2);
-        tokenName = Buffer.from(strHex, 'hex').toString('utf8');
-      }
-    } catch(e) {}
-    try {
-      const symResult = await rpcCall("eth_call", [{
-        to: TOKEN,
-        data: _HEX + "95d89b41"
-      }, "latest", "mainnet"]);
-      if (symResult && symResult.length > 130) {
-        const fullHex = symResult.slice(2);
-        const length = parseInt(fullHex.slice(64, 128), 16);
-        const strHex = fullHex.slice(128, 128 + length * 2);
-        tokenSymbol = Buffer.from(strHex, 'hex').toString('utf8');
-      }
-    } catch(e) {}
+    
+    if (isTestnet) {
+      // Try explorer API first for testnet
+      try {
+        const resp = await fetch(`https://explorer.testnet.chain.robinhood.com/api/v2/addresses/${TOKEN.toLowerCase()}`);
+        const data = await resp.json();
+        if (data.token) {
+          tokenName = data.token.name || tokenName;
+          tokenSymbol = data.token.symbol || tokenSymbol;
+        }
+      } catch(e) {}
+    } else {
+      // Mainnet: use RPC
+      try {
+        const nameResult = await rpcCall("eth_call", [{
+          to: TOKEN,
+          data: _HEX + "06fdde03"
+        }], "mainnet");
+        if (nameResult && nameResult.length > 130) {
+          const fullHex = nameResult.slice(2);
+          const length = parseInt(fullHex.slice(64, 128), 16);
+          const strHex = fullHex.slice(128, 128 + length * 2);
+          tokenName = Buffer.from(strHex, 'hex').toString('utf8');
+        }
+      } catch(e) {}
+      try {
+        const symResult = await rpcCall("eth_call", [{
+          to: TOKEN,
+          data: _HEX + "95d89b41"
+        }], "mainnet");
+        if (symResult && symResult.length > 130) {
+          const fullHex = symResult.slice(2);
+          const length = parseInt(fullHex.slice(64, 128), 16);
+          const strHex = fullHex.slice(128, 128 + length * 2);
+          tokenSymbol = Buffer.from(strHex, 'hex').toString('utf8');
+        }
+      } catch(e) {}
+    }
     
     // Testnet shows top 5, mainnet shows top 20
     const limit = isTestnet ? 5 : 20;
