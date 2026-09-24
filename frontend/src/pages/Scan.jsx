@@ -232,7 +232,7 @@ export default function Scan() {
             </span>
             <span className="badge badge-primary">
               <Users size={12} />
-              {tokenInfo.holders_count} Holders
+              {(tokenInfo.holders_count || tokenInfo.holdersCount || 0)} Holders
             </span>
             <span className="badge badge-warning">
               <Activity size={12} />
