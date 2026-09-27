@@ -312,12 +312,27 @@ export default function Scan() {
             <div className="text-sm text-muted mt-1 font-mono" style={{ fontSize: 12, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {tokenInfo.address}
             </div>
+            <div className="mt-2">
+              <span className={`badge ${tokenInfo.network === 'testnet' ? 'badge-warning' : 'badge-primary'}`}>
+                {tokenInfo.network === 'testnet' ? <TestTube size={12} /> : <Globe size={12} />}
+                {tokenInfo.network === 'testnet' ? 'Testnet' : 'Mainnet'}
+              </span>
+            </div>
+            <div className="token-explorer-row">
+              <a
+                href={tokenInfo.network === 'testnet'
+                  ? `https://explorer.testnet.chain.robinhood.com/address?query=${tokenInfo.address}`
+                  : `https://robinhoodchain.blockscout.com/address/${tokenInfo.address}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary token-explorer-link"
+              >
+                <ExternalLink size={14} />
+                Explorer
+              </a>
+            </div>
           </div>
           <div className="flex gap-3 flex-wrap items-center banner-meta">
-            <span className={`badge ${tokenInfo.network === 'testnet' ? 'badge-warning' : 'badge-primary'}`}>
-              {tokenInfo.network === 'testnet' ? <TestTube size={12} /> : <Globe size={12} />}
-              {tokenInfo.network === 'testnet' ? 'Testnet' : 'Mainnet'}
-            </span>
             <span className="badge badge-primary">
               <Users size={12} />
               {(tokenInfo.holders_count || tokenInfo.holdersCount || 0)} Holders
@@ -326,25 +341,6 @@ export default function Scan() {
               <Activity size={12} />
               {tokenInfo.totalTransfers} Transfers
             </span>
-            <a
-              href={`https://${tokenInfo.network === 'testnet' ? 'explorer.testnet.chain.robinhood.com/address' : 'robinhoodchain.blockscout.com/address'}?address=${tokenInfo.address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-secondary banner-explorer"
-              style={{ 
-                padding: '8px 12px', 
-                fontSize: 13, 
-                whiteSpace: 'nowrap', 
-                flexShrink: 0,
-                minWidth: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                maxWidth: 120
-              }}
-            >
-              <ExternalLink size={14} />
-              Explorer
-            </a>
           </div>
         </div>
       )}

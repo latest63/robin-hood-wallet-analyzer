@@ -1109,6 +1109,28 @@ h1, h2, h3, h4, h5, h6 {
   max-width: 100%;
 }
 
+/* Explorer link now sits inside the token-name card, under the network badge.
+   Constrained width + ellipsis so it never pushes the card frame wider. */
+.token-explorer-row {
+  margin-top: 10px;
+  min-width: 0;
+}
+.token-explorer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 6px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.token-explorer-row .btn {
+  flex-shrink: 0;
+}
+
 .token-banner > div:first-child {
   flex: 1;
   min-width: 0;
