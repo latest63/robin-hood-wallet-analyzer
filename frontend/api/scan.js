@@ -129,13 +129,25 @@ async function rpcCallFull(method, params, network = "mainnet", retries = 3) {
   }
 }
 
+// Is this an RPC error that a retry might clear (load-balancer flakiness)?
+function isTransientErr(msg) {
+  return /invalid hex|http 403|http 50[234]|429|timeout|timed ?out|aborted|fetch failed|network|ECONN|rate ?limit|too many requests/i.test(msg);
+}
+// Is this the deterministic "range has >10k logs" cap?
+function isCapErr(msg) {
+  return /exceeds limit|limit of|10000|results cap/i.test(msg);
+}
+
 // Fetch transfer logs for a block range. The RHC RPC caps eth_getLogs at
 // 10,000 logs per call; when a chunk exceeds that, recursively split it in
 // half and merge, so no transfer window is silently dropped.
-// The testnet RPC load-balances nodes and *intermittently* rejects
-// address-filtered ranges ("invalid hex string"), so transient errors are
-// retried before falling back to splitting the chunk.
-async function fetchTransferLogs(token, transferTopic, fromBlock, toBlock, network, _depth = 0) {
+// The RHC RPC load-balances nodes and *intermittently* rejects wide ranges
+// (403s, "invalid hex string"). Transient failures are retried with backoff,
+// then SPLIT (smaller queries get through the load balancer) rather than
+// silently dropping up to 20k blocks of data. `stats.failedChunks` records any
+// range that still couldn't be read, so the caller can detect a total wipeout
+// and fail honestly instead of returning a fake empty result.
+async function fetchTransferLogs(token, transferTopic, fromBlock, toBlock, network, _depth = 0, stats = null) {
   if (fromBlock > toBlock) return [];
   const filter = {
     fromBlock: ethHex(fromBlock),
@@ -144,27 +156,44 @@ async function fetchTransferLogs(token, transferTopic, fromBlock, toBlock, netwo
     topics: [transferTopic]
   };
   let body = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    body = await rpcCallFull("eth_getLogs", [filter], network);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      body = await rpcCallFull("eth_getLogs", [filter], network);
+    } catch (e) {
+      body = { error: { message: String(e.message || e) } };
+    }
     if (!body || !body.error) return body?.result || [];
     const msg = String(body.error.message || body.error);
-    // The 10k-log cap is deterministic, not flaky — stop retrying, split below.
-    if (msg.includes("exceeds limit") || msg.includes("limit of")) break;
-    // Transient node flakiness ("invalid hex string" on wide ranges is a known
-    // load-balancer quirk of the RHC testnet RPC) — back off and retry.
-    await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+    // Deterministic errors (cap / pruned state) — stop retrying, handle below.
+    if (isCapErr(msg) || !isTransientErr(msg)) break;
+    // Transient node flakiness — back off and retry the same range.
+    await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
   }
   if (body?.error) {
     const msg = String(body.error.message || body.error);
-    if ((msg.includes("exceeds limit") || msg.includes("limit of")) && _depth < 20 && fromBlock !== toBlock) {
-      // Split in half and merge — each half is under the cap.
+    if (isCapErr(msg) && _depth < 20 && fromBlock !== toBlock) {
+      // 10k cap — split in half and merge.
       const mid = Math.floor((fromBlock + toBlock) / 2);
-      const a = await fetchTransferLogs(token, transferTopic, fromBlock, mid, network, _depth + 1);
-      const b = await fetchTransferLogs(token, transferTopic, mid + 1, toBlock, network, _depth + 1);
+      const a = await fetchTransferLogs(token, transferTopic, fromBlock, mid, network, _depth + 1, stats);
+      const b = await fetchTransferLogs(token, transferTopic, mid + 1, toBlock, network, _depth + 1, stats);
       return [...a, ...b];
     }
-    // Persistent non-cap error (pruned state, unfixable node) — skip this
-    // chunk rather than fan out thousands of doomed calls.
+    if (isTransientErr(msg)) {
+      // Node kept refusing this chunk. Smaller chunks get through the
+      // load balancer — split (shallow cap keeps fan-out bounded) instead of
+      // dropping the range. Children record their own leaf failures in stats.
+      if (fromBlock !== toBlock && _depth < 3) {
+        const mid = Math.floor((fromBlock + toBlock) / 2);
+        const a = await fetchTransferLogs(token, transferTopic, fromBlock, mid, network, _depth + 1, stats);
+        const b = await fetchTransferLogs(token, transferTopic, mid + 1, toBlock, network, _depth + 1, stats);
+        return [...a, ...b];
+      }
+      // Leaf / too deep — record the gap so a total wipeout is detectable.
+      if (stats) { stats.failedChunks += 1; stats.failedBlocks += toBlock - fromBlock + 1; }
+      console.log(`getLogs transient fail [${fromBlock.toLocaleString()},${toBlock.toLocaleString()}] (depth ${_depth}): ${msg.slice(0, 120)}`);
+      return [];
+    }
+    // Persistent deterministic error (pruned state etc.) — skip this chunk.
     console.log(`getLogs error [${fromBlock},${toBlock}] (depth ${_depth}): ${msg.slice(0, 120)}`);
     return [];
   }
@@ -202,15 +231,39 @@ async function findCreationBlockBinarySearch(tokenAddress, currentBlock, network
 // Locate the LAUNCH block — the first block containing a Transfer event.
 // RHC mainnet prunes historical STATE (eth_getCode errors on old blocks) but
 // the log index is retained from block 0, so we can pinpoint the launch via
-// eth_getLogs. Coarse-to-fine: 4M windows from block 0 until the first
-// non-empty one, then 100K sub-windows inside it. Cap errors (>10k logs in a
-// window) are bisected; transient errors are retried. ~20 RPC calls total.
-async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network) {
+// eth_getLogs.
+//
+// The load-balanced RPC is FLAKY: it intermittently 403s / rejects wide
+// ranges ("invalid hex string") and enforces a 10,000-log cap. Discovery must
+// be robust to flakes. The invariant we protect: the returned block B is
+// ALWAYS <= the true launch block (anchoring early is safe; skipping late is
+// the bug that previously made it report 72M instead of 50.4M).
+//
+// 3-state probe:
+//   - EMPTY        : range confirmed to have no Transfer logs
+//   - NONEMPTY     : range confirmed to have Transfer logs. A 10k-log cap
+//                      error is DEFINITIVELY nonempty (too many logs).
+//   - UNDETERMINED : RPC flaked (or deadline hit); unknown. NEVER treated as
+//                      empty. Coarse pass anchors at the first UNDET window
+//                      instead of walking past it.
+// Flow: 4M coarse walk -> anchor a window -> walk its 1M subs left-to-right ->
+// bisect the anchor sub (cap = NONEMPTY, flake = keep-left, deadline =
+// return anchor start). Deterministic ~25-35 probes in normal conditions.
+async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network, deadline = null) {
   console.log("Locating launch block (first Transfer event) via log-index scan...");
+  if (deadline === null) deadline = Date.now() + 60000; // bounded: leave room for the scan
 
-  // Does [from..to] contain Transfer logs? Returns {logs: array|null}.
-  // null = undetermined (RPC gave up after retries). Bisects the 10k cap.
-  const hasLogs = async (from, to) => {
+  const EMPTY = "empty", NONEMPTY = "nonempty", UNDET = "undetermined";
+  // A 10k-log "exceeds limit / 10000 / too many" error PROVES the range is
+  // busy — definitively NON-empty (we anchor here and scan forward).
+  const isCapMsg = m => /exceeds|limit of|10000|results cap|too many (logs|results)/i.test(m);
+
+  // Probe one range. Returns {state, logs}:
+  //   EMPTY      -> logs=[] (confirmed no transfers)
+  //   NONEMPTY   -> logs=actual logs, or null if it was a cap error
+  //   UNDET      -> logs=null (RPC flaked or deadline hit; unknown)
+  const probe = async (from, to) => {
+    if (Date.now() > deadline) return { state: UNDET, logs: null };
     for (let attempt = 0; attempt < 5; attempt++) {
       const body = await rpcCallFull("eth_getLogs", [{
         fromBlock: ethHex(from),
@@ -218,83 +271,70 @@ async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network
         address: token,
         topics: [transferTopic]
       }], network);
-      if (!body || !body.error) return { logs: body?.result || [] };
-      const msg = String(body.error.message || body.error);
-      if (msg.includes("exceeds limit") || msg.includes("limit of") || msg.includes("10000")) {
-        // >10k logs in this window — bisect, keep the leftmost non-empty side
-        // (the global earliest always lives in the earliest non-empty sub-window).
-        const mid = Math.floor((from + to) / 2);
-        if (mid <= from) return { logs: [] };
-        const left = await hasLogs(from, mid);
-        if (left.logs && left.logs.length) return left;
-        return hasLogs(mid + 1, to);
+      if (!body || !body.error) {
+        const logs = body?.result || [];
+        return logs.length ? { state: NONEMPTY, logs } : { state: EMPTY, logs: [] };
       }
-      // transient (timeout / 429) — back off and retry the same range
-      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+      const msg = String(body.error.message || body.error);
+      if (isCapMsg(msg)) return { state: NONEMPTY, logs: null };
+      // Transient flake (403 / "invalid hex string" / 429 / timeout) — back off.
+      await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
     }
-    return { logs: null };
+    return { state: UNDET, logs: null };
   };
 
-  // 1) Coarse pass: 4M windows from 0 until the first non-empty.
-  let targetFrom = null, targetTo = null;
+  // Find the exact first-transfer block inside [from,to] via binary search.
+  // NONEMPTY -> tighten right; EMPTY -> tighten left; UNDET -> keep left
+  // (earliest side, safe underestimate). Bounded steps + deadline cap.
+  const firstTransferBlock = async (from, to) => {
+    let lo = from, hi = to;
+    for (let depth = 0; depth < 16 && lo < hi; depth++) {
+      const mid = Math.floor((lo + hi) / 2);
+      const r = await probe(lo, mid);
+      if (r.state === EMPTY) lo = mid + 1;      // left clean -> earliest is right
+      else { hi = mid; }                          // NONEMPTY or UNDET -> keep left
+    }
+    const r = await probe(lo, hi);
+    if (r.state === NONEMPTY && r.logs && r.logs.length) {
+      r.logs.sort((a, b) => parseInt(a.blockNumber, 16) - parseInt(b.blockNumber, 16));
+      return parseInt(r.logs[0].blockNumber, 16);
+    }
+    return lo; // flaked/deadline — safe underestimate (anchor early, scan forward)
+  };
+
+  // 1) Coarse pass: 4M windows from 0. Advance ONLY on a confirmed-empty
+  //    window; the first non-empty OR undetermined window is the candidate.
+  //    Inside the candidate, walk its 1M sub-windows left-to-right and bisect
+  //    the first sub that is not confirmed empty.
   const COARSE = 4000000;
   outer:
   for (let s = 0; s <= currentBlock; s += COARSE) {
     const e = Math.min(s + COARSE - 1, currentBlock);
-    let r = await hasLogs(s, e);
-    if (r.logs === null) {
-      // Undetermined (RPC gave up on this window). The launch may STILL be in
-      // it. Probe 1M sub-windows; if any is confirmed non-empty, anchor the
-      // tightest one. If every sub-window is undetermined too, anchor at the
-      // window START — we have already proven every EARLIER window empty, so
-      // the genesis (first non-empty window) must be here or later. NEVER skip
-      // an undetermined window: that is what previously caused the scanner to
-      // adopt the next (later) window and miss the true genesis.
-      let anchored = false;
-      for (let sub = s; sub <= e; sub += 1000000) {
-        r = await hasLogs(sub, Math.min(sub + 999999, e));
-        if (r.logs && r.logs.length) {
-          targetFrom = sub; targetTo = Math.min(sub + 999999, e);
-          anchored = true;
-          break outer;
-        }
-        // r.logs null -> keep probing the next 1M sub-window
-      }
-      if (!anchored) {
-        console.log(`Coarse window ${s.toLocaleString()} undetermined; anchoring scan at its start`);
-        targetFrom = s; targetTo = e;
-        break;
-      }
-      continue;
+    const r = await probe(s, e);
+    if (r.state === EMPTY) continue;            // confirmed clean, advance
+
+    // Candidate 4M window (NONEMPTY, or UNDET which we never skip). Walk its
+    // 1M sub-windows left-to-right; bisect the first sub that isn't confirmed
+    // empty. If every sub is confirmed empty, the 4M window was a flake-UNDET
+    // but is actually empty -> advance to the next 4M window (continue).
+    for (let sub = s; sub <= e; sub += 1000000) {
+      const subEnd = Math.min(sub + 999999, e);
+      const sr = await probe(sub, subEnd);
+      if (sr.state === EMPTY) continue;         // sub clean, next sub
+      // Nonempty (cap proves it) or undetermined (safe-early) sub holds it.
+      const launch = await firstTransferBlock(sub, subEnd);
+      console.log(`Launch block found: ${launch.toLocaleString()}`);
+      return launch;
     }
-    if (r.logs.length) { targetFrom = s; targetTo = e; break; }
+    continue; // all sub-windows confirmed empty -> next 4M window
   }
 
-  if (!targetFrom) {
-    console.log("No Transfer logs found anywhere; token may not exist on this network");
+  if (Date.now() > deadline) {
+    console.log("Discovery deadline hit; token may exist but launch block is unknown");
     return 0;
   }
-
-  // 2) Fine pass: 100K windows inside [targetFrom, targetTo]
-  let lo = targetFrom;
-  while (lo <= targetTo) {
-    const w = Math.min(lo + 99999, targetTo);
-    const r = await hasLogs(lo, w);
-    if (r.logs && r.logs.length) {
-      r.logs.sort((a, b) => parseInt(a.blockNumber, 16) - parseInt(b.blockNumber, 16));
-      const first = parseInt(r.logs[0].blockNumber, 16);
-      console.log(`Launch block found: ${first.toLocaleString()}`);
-      return first;
-    }
-    if (r.logs === null) {
-      // undetermined 100K window — treat as possibly containing the launch:
-      // stop and anchor at its start (safe: scanning a bit early is fine)
-      console.log(`Log window undetermined at ${lo.toLocaleString()}; anchoring scan there`);
-      return lo;
-    }
-    lo = w + 1;
-  }
-  return targetFrom;
+  console.log("No Transfer logs found anywhere; token may not exist on this network");
+  return 0;
 }
 
 // Get token metadata from explorer (with API key if available)
@@ -342,6 +382,10 @@ export default async function handler(req, res) {
     const blockHex = await rpcCall("eth_blockNumber", [], network);
     const currentBlock = parseInt(blockHex, 16);
     console.log(`Current block: ${currentBlock.toLocaleString()}`);
+
+    // One shared budget for discovery + scan, 10s under the 180s Vercel cap so
+    // the function always answers (partial result beats a platform timeout).
+    const overallDeadline = Date.now() + 170000;
     
     // Discover token creation block
     console.log("\n[1/3] Discovering token creation block...");
@@ -391,7 +435,16 @@ export default async function handler(req, res) {
         startBlock = Math.max(0, currentBlock - MAX_SCAN_BLOCKS);
         console.log(`Testnet: using recent-window fallback (last ${MAX_SCAN_BLOCKS.toLocaleString()} blocks)`);
       } else {
-        startBlock = await findLaunchBlockByLogs(TOKEN, TRANSFER_TOPIC, currentBlock, network);
+        // Discovery gets its own sub-budget (90s) so the scan always keeps a
+        // meaningful share of the overall deadline.
+        startBlock = await findLaunchBlockByLogs(TOKEN, TRANSFER_TOPIC, currentBlock, network, Math.min(overallDeadline, Date.now() + 90000));
+        if (!startBlock) {
+          // Discovery failed (RPC flake storm or deadline) — NEVER scan from
+          // block 0: that wastes the whole function on 200K empty blocks and
+          // shows "no result". Fall back to a recent window like testnet.
+          startBlock = Math.max(0, currentBlock - MAX_SCAN_BLOCKS);
+          console.log(`Discovery failed; falling back to recent window (last ${MAX_SCAN_BLOCKS.toLocaleString()} blocks)`);
+        }
       }
     }
     
@@ -409,9 +462,13 @@ export default async function handler(req, res) {
     // from the 0x0 mint (e.g. `0x0 -> 0x2bf8e7a1` at Denar's genesis). That
     // wallet is the ISSUER, not a buyer, so it must not be counted. Detect it
     // from the very first few blocks of the launch window (best-effort).
+    const seedStats = { failedChunks: 0, failedBlocks: 0 };
     let seedWallet = null;
     try {
-      const seedLogs = await fetchTransferLogs(TOKEN, TRANSFER_TOPIC, startBlock, startBlock + 500, network);
+      const seedLogs = await fetchTransferLogs(TOKEN, TRANSFER_TOPIC, startBlock, startBlock + 500, network, 0, seedStats);
+      if (seedStats.failedChunks) {
+        console.log(`Seed detection hit ${seedStats.failedChunks} transient RPC failure(s); seed may be mis-detected`);
+      }
       seedLogs.sort((a, b) => parseInt(a.blockNumber, 16) - parseInt(b.blockNumber, 16));
       for (const lg of seedLogs) {
         const from = _HEX + lg.topics[1].substring(26).toLowerCase();
@@ -431,21 +488,32 @@ export default async function handler(req, res) {
 
     let allBuyers = {};
     let logCount = 0;
+    // Track transient-RPC gaps so a total wipeout can't masquerade as a
+    // genuine "zero transfers" result.
+    const scanStats = { failedChunks: 0, failedBlocks: 0 };
+    // Deadline for the transfer scan itself — shared across the whole function
+    // (discovery + scan) so the two never add up past the 180s Vercel cap.
+    const deadline = overallDeadline;
 
     for (let start = startBlock; start <= scanEnd; start += chunkSize) {
       const end = Math.min(start + chunkSize - 1, scanEnd);
-      
+
+      if (Date.now() > deadline) {
+        console.log(`Scan deadline reached at block ${start.toLocaleString()}; returning partial result`);
+        break;
+      }
+
       // Progress every 50K blocks (scan window is bounded to 200K)
       if ((start - startBlock) % 50000 === 0 && start > startBlock) {
         const progress = ((start - startBlock) / (scanEnd - startBlock) * 100).toFixed(0);
         console.log(`  Progress: ${progress}% (${logCount} logs)`);
       }
-      
-      const logs = await fetchTransferLogs(TOKEN, TRANSFER_TOPIC, start, end, network);
-      
+
+      const logs = await fetchTransferLogs(TOKEN, TRANSFER_TOPIC, start, end, network, 0, scanStats);
+
       if (!logs?.length) continue;
       logCount += logs.length;
-      
+
       for (const log of logs) {
         const toAddr = _HEX + log.topics[2].substring(26).toLowerCase();
         const fromAddr = _HEX + log.topics[1].substring(26).toLowerCase();
@@ -459,7 +527,7 @@ export default async function handler(req, res) {
         // whether they got tokens from the seed distribution, the pool, or a
         // fresh mint.
         if (notBuyer(toAddr)) continue;
-        
+
         if (!allBuyers[toAddr]) {
           allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
         }
@@ -467,8 +535,21 @@ export default async function handler(req, res) {
         allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
       }
     }
-    
-    console.log(`\nScan complete: ${logCount} transfers from ${Object.keys(allBuyers).length} unique wallets`);
+
+    // Honest failure: if the RPC 403-stormed the scan and we lost data, say so
+    // instead of returning a plausible-looking empty result.
+    if (scanStats.failedChunks > 0 && logCount === 0) {
+      console.error(`Scan lost ${scanStats.failedChunks} chunk(s) (${scanStats.failedBlocks} blocks) to transient RPC errors; failing honestly`);
+      return res.status(503).json({
+        error: "The chain RPC is flaky right now — the scan lost data. Please retry in a minute.",
+        transient: true,
+        token: address,
+        network
+      });
+    }
+
+    const partial = Date.now() > deadline;
+    console.log(`\nScan complete: ${logCount} transfers from ${Object.keys(allBuyers).length} unique wallets${partial ? " (PARTIAL — deadline)" : ""}${scanStats.failedChunks ? ` (${scanStats.failedChunks} chunk(s) lost)` : ""}`);
     
     // Format results (convert BigInt to string for JSON)
     const buyers = Object.entries(allBuyers)
