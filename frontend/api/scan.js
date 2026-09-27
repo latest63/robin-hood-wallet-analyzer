@@ -1,9 +1,9 @@
-// Dynamic token creation block discovery with API key support
-const _HEX = Buffer.from([48, 120]).toString();
+// Dynamic token launch-block discovery + launch-window scan.
+// Gives the Vercel function enough time for the log-index binary search plus a
+// bounded 200K-block scan (hobby tier caps at 60s, Pro up to 300s).
+export const maxDuration = 180;
 
-// Give the scan room to finish. Chunked RPC + bounded window can exceed the
-// 10s default on the free/Pro tier; 30s covers a full 200K-block window.
-export const maxDuration = 30;
+const _HEX = Buffer.from([48, 120]).toString();
 
 const RPC_URLS = {
   mainnet: "https://rpc.mainnet.chain.robinhood.com",
@@ -191,6 +191,88 @@ async function findCreationBlockBinarySearch(tokenAddress, currentBlock, network
   return creationBlock;
 }
 
+// Locate the LAUNCH block — the first block containing a Transfer event.
+// RHC mainnet prunes historical STATE (eth_getCode errors on old blocks) but
+// the log index is retained from block 0, so we can pinpoint the launch via
+// eth_getLogs. Coarse-to-fine: 4M windows from block 0 until the first
+// non-empty one, then 100K sub-windows inside it. Cap errors (>10k logs in a
+// window) are bisected; transient errors are retried. ~20 RPC calls total.
+async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network) {
+  console.log("Locating launch block (first Transfer event) via log-index scan...");
+
+  // Does [from..to] contain Transfer logs? Returns {logs: array|null}.
+  // null = undetermined (RPC gave up after retries). Bisects the 10k cap.
+  const hasLogs = async (from, to) => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const body = await rpcCallFull("eth_getLogs", [{
+        fromBlock: ethHex(from),
+        toBlock: ethHex(to),
+        address: token,
+        topics: [transferTopic]
+      }], network);
+      if (!body || !body.error) return { logs: body?.result || [] };
+      const msg = String(body.error.message || body.error);
+      if (msg.includes("exceeds limit") || msg.includes("limit of") || msg.includes("10000")) {
+        // >10k logs in this window — bisect, keep the leftmost non-empty side
+        // (the global earliest always lives in the earliest non-empty sub-window).
+        const mid = Math.floor((from + to) / 2);
+        if (mid <= from) return { logs: [] };
+        const left = await hasLogs(from, mid);
+        if (left.logs && left.logs.length) return left;
+        return hasLogs(mid + 1, to);
+      }
+      // transient (timeout / 429) — back off and retry the same range
+      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+    }
+    return { logs: null };
+  };
+
+  // 1) Coarse pass: 4M windows from 0 until the first non-empty.
+  let targetFrom = null, targetTo = null;
+  const COARSE = 4000000;
+  outer:
+  for (let s = 0; s <= currentBlock; s += COARSE) {
+    const e = Math.min(s + COARSE - 1, currentBlock);
+    let r = await hasLogs(s, e);
+    if (r.logs === null) {
+      // Undetermined — probe 1M sub-windows before deciding
+      for (let sub = s; sub <= e; sub += 1000000) {
+        r = await hasLogs(sub, Math.min(sub + 999999, e));
+        if (r.logs && r.logs.length) { targetFrom = sub; targetTo = Math.min(sub + 999999, e); break outer; }
+        if (r.logs === null) continue; // empty
+      }
+      continue;
+    }
+    if (r.logs.length) { targetFrom = s; targetTo = e; break; }
+  }
+
+  if (!targetFrom) {
+    console.log("No Transfer logs found anywhere; token may not exist on this network");
+    return 0;
+  }
+
+  // 2) Fine pass: 100K windows inside [targetFrom, targetTo]
+  let lo = targetFrom;
+  while (lo <= targetTo) {
+    const w = Math.min(lo + 99999, targetTo);
+    const r = await hasLogs(lo, w);
+    if (r.logs && r.logs.length) {
+      r.logs.sort((a, b) => parseInt(a.blockNumber, 16) - parseInt(b.blockNumber, 16));
+      const first = parseInt(r.logs[0].blockNumber, 16);
+      console.log(`Launch block found: ${first.toLocaleString()}`);
+      return first;
+    }
+    if (r.logs === null) {
+      // undetermined 100K window — treat as possibly containing the launch:
+      // stop and anchor at its start (safe: scanning a bit early is fine)
+      console.log(`Log window undetermined at ${lo.toLocaleString()}; anchoring scan there`);
+      return lo;
+    }
+    lo = w + 1;
+  }
+  return targetFrom;
+}
+
 // Get token metadata from explorer (with API key if available)
 async function getTokenMetadata(tokenAddress, network) {
   const apiKey = network === 'mainnet' ? MAINNET_API_KEY : null;
@@ -273,18 +355,19 @@ export default async function handler(req, res) {
       console.log(`Explorer discovery failed: ${e.message}, using RPC binary search`);
     }
     
-    // Fallback when the explorer doesn't yield a creation block. Mainnet has
-    // full archive state, so the eth_getCode binary search is reliable there.
-    // The testnet RPC is pruned (eth_getCode/eth_getLogs error on historical
-    // blocks), so binary search misbehaves — instead anchor the scan at a
-    // recent window and rely on the source filter to surface early buyers.
+    // Fallback when the explorer doesn't yield a creation block.
+    //  - Testnet: RPC is pruned, so anchor at a recent window.
+    //  - Mainnet: historical STATE is pruned (eth_getCode errors on old
+    //    blocks), but the log index is retained from block 0 — so binary-search
+    //    the FIRST Transfer event to find the real launch block. This is far
+    //    more reliable than a pruned getCode search, which just gives up and
+    //    lands on the current block.
     if (!startBlock) {
       if (isTestnet) {
         startBlock = Math.max(0, currentBlock - MAX_SCAN_BLOCKS);
         console.log(`Testnet: using recent-window fallback (last ${MAX_SCAN_BLOCKS.toLocaleString()} blocks)`);
       } else {
-        console.log("Using RPC binary search for creation block...");
-        startBlock = await findCreationBlockBinarySearch(TOKEN, currentBlock, network);
+        startBlock = await findLaunchBlockByLogs(TOKEN, TRANSFER_TOPIC, currentBlock, network);
       }
     }
     
@@ -297,6 +380,30 @@ export default async function handler(req, res) {
     const chunkSize = 20000;
 
     console.log(`\n[2/3] Scanning blocks ${startBlock.toLocaleString()} to ${scanEnd.toLocaleString()} (bounded to ${MAX_SCAN_BLOCKS.toLocaleString()})...`);
+
+    // "Seed" = the deployer treasury that first received the supply straight
+    // from the 0x0 mint (e.g. `0x0 -> 0x2bf8e7a1` at Denar's genesis). That
+    // wallet is the ISSUER, not a buyer, so it must not be counted. Detect it
+    // from the very first few blocks of the launch window (best-effort).
+    let seedWallet = null;
+    try {
+      const seedLogs = await fetchTransferLogs(TOKEN, TRANSFER_TOPIC, startBlock, startBlock + 500, network);
+      seedLogs.sort((a, b) => parseInt(a.blockNumber, 16) - parseInt(b.blockNumber, 16));
+      for (const lg of seedLogs) {
+        const from = _HEX + lg.topics[1].substring(26).toLowerCase();
+        if (from === ZERO_ADDRESS) {
+          seedWallet = _HEX + lg.topics[2].substring(26).toLowerCase();
+          console.log(`Seed (issuer treasury) detected: ${seedWallet}`);
+          break;
+        }
+      }
+    } catch (e) { /* seed detection is best-effort; proceed without it */ }
+
+    // Wallets that are infrastructure, not buyers: the mint source, the
+    // PoolManager, the issuer seed, and (if known) the creator EOA.
+    const notBuyer = addr =>
+      addr === ZERO_ADDRESS || addr === POOL_MANAGER ||
+      addr === seedWallet || (creatorAddress && addr === creatorAddress);
 
     let allBuyers = {};
     let logCount = 0;
@@ -322,14 +429,13 @@ export default async function handler(req, res) {
         const amount = BigInt(_HEX + dataStr);
         const blockNum = parseInt(log.blockNumber, 16);
 
-        // Early-buyer source = the launch distribution: seed to the creator,
-        // distribution out through the PoolManager, plus fresh mints from zero.
-        // Later CEX/DEX/holder-to-holder transfers are NOT early buyers - skip.
-        if (fromAddr !== creatorAddress && fromAddr !== POOL_MANAGER && fromAddr !== ZERO_ADDRESS) {
-          continue;
-        }
+        // A "first buyer" is a real wallet that RECEIVED the token — not the
+        // mint source (0x0), the PoolManager, or the issuer seed. Ranking
+        // receipts by first-received block surfaces the earliest buyers first,
+        // whether they got tokens from the seed distribution, the pool, or a
+        // fresh mint.
+        if (notBuyer(toAddr)) continue;
         
-        // Track direct recipients from creator
         if (!allBuyers[toAddr]) {
           allBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
         }
