@@ -124,10 +124,9 @@ export default function Scan() {
         timestamp: item.timestamp
       })));
 
-      // Auto-select all early buyers
-      const autoSelected = new Set();
-      earlyData.forEach((_, i) => autoSelected.add(i));
-      setSelectedTraders(autoSelected);
+      // No auto-select: cluster count starts at 0 and grows only as the
+      // user checks rows. (The old auto-select-all also used bare-numeric
+      // keys while the checkboxes key by `early-${i}`, so it was dead.)
     }
   };
 
