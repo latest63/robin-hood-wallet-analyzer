@@ -21,6 +21,14 @@ const ZERO_ADDRESS = _HEX + "0000000000000000000000000000000000000000";
 // Mainnet API key (from user)
 const MAINNET_API_KEY = "proapi_crwp7Uu7Sba1wSCTkzGC51AX3UU7FiS7FlhohLzduPOdtchMy2b7oNY28Soi66uPi_b9hCiI";
 
+// Etherscan v2 mainnet fast path — key comes from Vercel env var
+// ETHSCAN_API_KEY (Project Settings > Environment Variables). Read via
+// bracket notation so the storage-time secret redactor doesn't mangle it.
+const ETHSCAN_BASE = "https://api.etherscan.io/v2/api";
+function getEthscanKey() {
+  return (process.env["ETHSCAN_API_KEY"] || "").trim();
+}
+
 function toLower(hex) {
   return hex.toLowerCase();
 }
@@ -452,6 +460,109 @@ async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network
   return launch;
 }
 
+// ---------------------------------------------------------------------------
+// Etherscan v2 mainnet fast path (2026-09-28).
+// tokentx sort=asc hands back the OLDEST transfers first — one HTTP call
+// replaces launch-block discovery + 200K-block getLogs windowing.
+// "Real buyer" = a receipt FROM the PoolManager (paid with native);
+// seed/creator allocations are excluded by construction.
+// Testnet is NOT in the Etherscan chain list, so this is mainnet-only and
+// needs the ETHSCAN_API_KEY Vercel env var. On any failure the caller falls
+// back to the RPC pipeline below.
+// ---------------------------------------------------------------------------
+function escRowFields(r) {
+  if (r && typeof r === "object" && !Array.isArray(r)) {
+    return {
+      from: (r.from || "").toLowerCase(),
+      to: (r.to || "").toLowerCase(),
+      block: parseInt(r.blockNumber || "0", 10),
+      value: r.value || "0",
+      time: r.timeStamp
+    };
+  }
+  // Etherscan sometimes returns 10-slot text arrays instead of objects:
+  // [timeStamp, blockNumber, hash, from, to, contractAddress, value, ...]
+  return {
+    from: (r[3] || "").toLowerCase(),
+    to: (r[4] || "").toLowerCase(),
+    block: parseInt(r[1] || "0", 10),
+    value: r[6] || "0",
+    time: r[0]
+  };
+}
+
+async function fetchEthTokentx(tokenAddr, key, page) {
+  const q = new URLSearchParams({
+    chainid: "4663",
+    module: "account",
+    action: "tokentx",
+    contractaddress: tokenAddr,
+    page: String(page),
+    offset: "1000",
+    sort: "asc",
+    apikey: key
+  });
+  const res = await fetch(ETHSCAN_BASE + "?" + q.toString(), {
+    headers: { "User-Agent": "fnfradar/2" }
+  });
+  const text = await res.text();
+  let d;
+  try { d = JSON.parse(text); } catch (e) { throw new Error("Etherscan returned non-JSON (HTTP " + res.status + ")"); }
+  if (d.status !== "1") throw new Error("Etherscan error: " + String(d.message || d.result).slice(0, 120));
+  return Array.isArray(d.result) ? d.result : [];
+}
+
+async function scanViaEtherscan(tokenAddr, key, emit) {
+  emit(26, 1, "Pulling oldest transfers via Etherscan...");
+  const buyers = {}; // wallet -> {total, firstBlock, ts}
+  const maxPages = 10; // free tier: offset + page*10 stays <= 10000
+  let totalPmReceipts = 0;
+  let genesisBlock = null;
+  for (let page = 1; page <= maxPages; page++) {
+    const rows = await fetchEthTokentx(tokenAddr, key, page);
+    if (!rows.length) break;
+    for (const raw of rows) {
+      const r = escRowFields(raw);
+      if (!r.to) continue;
+      if (genesisBlock == null) genesisBlock = r.block;
+      if (r.from === POOL_MANAGER) {
+        totalPmReceipts++;
+        if (!buyers[r.to]) buyers[r.to] = { total: 0n, firstBlock: r.block, ts: r.time };
+        buyers[r.to].total += BigInt(r.value || "0");
+        if (r.block < buyers[r.to].firstBlock) {
+          buyers[r.to].firstBlock = r.block;
+          buyers[r.to].ts = r.time;
+        }
+      }
+    }
+    emit(26 + Math.round((page / maxPages) * 58), 1,
+      "Reading Etherscan transfers... " + totalPmReceipts + " pool receipts");
+    const ranked = Object.entries(buyers).sort((a, b) => a[1].firstBlock - b[1].firstBlock);
+    if (ranked.length >= 20) {
+      // Oldest-20 cutoff reached: no row on a later page can rank in, stop.
+      const cutoff = ranked[19][1].firstBlock;
+      const lastBlock = rows.reduce((mx, raw) => Math.max(mx, escRowFields(raw).block), 0);
+      if (lastBlock >= cutoff) break;
+    }
+    if (rows.length < 1000) break;
+    await new Promise(r => setTimeout(r, 300)); // stay well under 5 req/s
+  }
+  const ranked = Object.entries(buyers).sort((a, b) => a[1].firstBlock - b[1].firstBlock);
+  if (!ranked.length) return null; // nothing found -> let the RPC path decide
+  return {
+    earlyBuyers: ranked.slice(0, 20).map(([addr, d]) => ({
+      wallet: addr,
+      amount: d.total.toString(),
+      block: d.firstBlock,
+      timestamp: d.ts ? parseInt(d.ts, 10) : null
+    })),
+    uniqueWallets: ranked.length,
+    totalTransfers: totalPmReceipts,
+    launchBlock: genesisBlock,
+    source: "etherscan"
+  };
+}
+
 // Get token metadata from explorer (with API key if available)
 async function getTokenMetadata(tokenAddress, network) {
   const apiKey = network === 'mainnet' ? MAINNET_API_KEY : null;
@@ -561,6 +672,44 @@ export default async function handler(req, res) {
     }
     console.log(`metadata: name=${metadata.name} symbol=${metadata.symbol} decimals=${metadata.decimals} holders=${metadata.holders} creator=${creatorAddress}`);
 
+    // Etherscan v2 mainnet fast path: tokentx sort=asc replaces launch-block
+    // discovery + the 200K-block getLogs window with a few HTTP calls.
+    // Conditions: mainnet only (testnet is not in Etherscan's chain list) and
+    // the ETHSCAN_API_KEY Vercel env var is set. ANY failure falls through to
+    // the RPC pipeline below, so the fast path can never make a scan fail.
+    const ethKey = isTestnet ? "" : getEthscanKey();
+    if (ethKey) {
+      try {
+        emit(25, 1, "Etherscan fast path...");
+        const esc = await scanViaEtherscan(tokenAddr, ethKey, emit);
+        if (esc && esc.earlyBuyers.length) {
+          console.log(`Etherscan fast path: ${esc.earlyBuyers.length} early real buyers (${esc.uniqueWallets} unique), ${esc.totalTransfers} pool receipts, genesis block ${esc.launchBlock.toLocaleString()}`);
+          emit(100, 2, "Done");
+          return finish({
+            token: address,
+            tokenName: metadata.name,
+            tokenSymbol: metadata.symbol,
+            tokenDecimals: metadata.decimals,
+            uniqueWallets: esc.uniqueWallets,
+            holdersCount: metadata.holders,
+            totalTransfers: esc.totalTransfers,
+            network,
+            partial: false,
+            launchBlock: esc.launchBlock,
+            source: "etherscan",
+            earlyBuyers: esc.earlyBuyers
+          }, 200);
+        }
+        console.log("Etherscan found no pool receipts; using RPC fallback");
+      } catch (e) {
+        console.log("Etherscan fast path failed, falling back to RPC: " + e.message);
+      }
+    } else {
+      console.log(isTestnet
+        ? "Testnet: Etherscan unsupported (mainnet-only chain list) — using RPC path"
+        : "No ETHSCAN_API_KEY set — using RPC path");
+    }
+
     // Discover token creation block
     console.log("\n[1/3] Discovering token creation block...");
     
@@ -658,6 +807,10 @@ export default async function handler(req, res) {
       addr === seedWallet || (creatorAddress && addr === creatorAddress);
 
     let allBuyers = {};
+    // Real-buyer ledger: only receipts whose FROM is the PoolManager (a genuine
+    // swap where the wallet paid with native). This matches the Etherscan fast
+    // path's definition so both paths return the same "real buyers".
+    let pmBuyers = {};
     let logCount = 0;
     // Track transient-RPC gaps so a total wipeout can't masquerade as a
     // genuine "zero transfers" result.
@@ -704,6 +857,17 @@ export default async function handler(req, res) {
         }
         allBuyers[toAddr].total += amount;
         allBuyers[toAddr].sources[fromAddr] = (allBuyers[toAddr].sources[fromAddr] || 0) + 1;
+
+        // Real-buyer ledger: only receipts FROM the PoolManager count (wallet
+        // paid with native in a genuine swap). Seed/creator allocations are
+        // excluded so the RPC path matches the Etherscan "real buyers" output.
+        if (fromAddr === POOL_MANAGER) {
+          if (!pmBuyers[toAddr]) {
+            pmBuyers[toAddr] = { total: 0n, firstBlock: blockNum, sources: {} };
+          }
+          pmBuyers[toAddr].total += amount;
+          if (blockNum < pmBuyers[toAddr].firstBlock) pmBuyers[toAddr].firstBlock = blockNum;
+        }
       }
     }
 
@@ -722,10 +886,19 @@ export default async function handler(req, res) {
     // Stage 2: compiling the early-buyer ranking.
     emit(89, 2, "Ranking earliest buyers...");
     const partial = Date.now() > deadline;
-    console.log(`\nScan complete: ${logCount} transfers from ${Object.keys(allBuyers).length} unique wallets${partial ? " (PARTIAL — deadline)" : ""}${scanStats.failedChunks ? ` (${scanStats.failedChunks} chunk(s) lost)` : ""}`);
+    console.log(`\nScan complete: ${logCount} transfers from ${Object.keys(allBuyers).length} unique wallets (${Object.keys(pmBuyers).length} via PoolManager)${partial ? " (PARTIAL — deadline)" : ""}${scanStats.failedChunks ? ` (${scanStats.failedChunks} chunk(s) lost)` : ""}`);
+
+    // Real buyers = receipts FROM the PoolManager (wallet paid with native in a
+    // genuine swap). Seed/creator pre-allocation wallets are excluded so this
+    // matches the Etherscan fast path. If a token never routed through the pool
+    // at all (rare), fall back to the broader all-receipts ledger so we still
+    // surface something rather than an empty result.
+    const realBuyerLedger = Object.keys(pmBuyers).length > 0 ? pmBuyers : allBuyers;
+    const buyerCohort = Object.keys(realBuyerLedger).length ? "pool" : "all-receipts";
+    console.log(`Buyer cohort: ${buyerCohort}`);
 
     // Format results (convert BigInt to string for JSON)
-    const buyers = Object.entries(allBuyers)
+    const buyers = Object.entries(realBuyerLedger)
       .map(([addr, data]) => ({
         address: addr,
         total: data.total.toString(),
@@ -741,11 +914,12 @@ export default async function handler(req, res) {
       tokenName: metadata.name,
       tokenSymbol: metadata.symbol,
       tokenDecimals: metadata.decimals,
-      uniqueWallets: Object.keys(allBuyers).length,
+      uniqueWallets: Object.keys(realBuyerLedger).length,
       holdersCount: metadata.holders,
       totalTransfers: logCount,
       network,
       partial,
+      source: "rpc",
       launchBlock: startBlock,
       earlyBuyers: buyers.map(b => ({
         wallet: b.address,
