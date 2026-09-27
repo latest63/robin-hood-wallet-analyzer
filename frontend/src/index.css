@@ -1272,3 +1272,61 @@ h1, h2, h3, h4, h5, h6 {
   .nav-links.open { display: flex; }
   .nav-connect-widget { margin-left: 0 !important; }
 }
+/* Cluster radar widget (per-cluster card) */
+.cluster-radar-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+.cluster-radar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.radar-canvas-wrap {
+  position: relative;
+  width: 112px;
+  height: 112px;
+}
+.radar-canvas-wrap canvas {
+  display: block;
+}
+.radar-tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 4px 16px rgba(249, 115, 22, 0.25);
+}
+.radar-caption {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+/* Cluster card: name/info on the left, radar center-right, actions far right. */
+.wallet-card .cluster-radar-slot {
+  align-self: center;
+}
+@media (max-width: 640px) {
+  .wallet-card { flex-wrap: wrap; }
+  .cluster-radar-slot {
+    align-self: flex-start;
+    order: 3;
+    width: 100%;
+  }
+}
