@@ -273,7 +273,26 @@ async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network
       }], network);
       if (!body || !body.error) {
         const logs = body?.result || [];
-        return logs.length ? { state: NONEMPTY, logs } : { state: EMPTY, logs: [] };
+        if (logs.length) return { state: NONEMPTY, logs };
+        // The RHC load balancer routes calls to nodes with different log-index
+        // retention, so a single "empty" answer can be a false empty from a
+        // node that pruned that range. Confirm with a second call (hit a
+        // different backend) before trusting it; a disagreement is never
+        // treated as empty.
+        await new Promise(r => setTimeout(r, 400));
+        const b2 = await rpcCallFull("eth_getLogs", [{
+          fromBlock: ethHex(from),
+          toBlock: ethHex(to),
+          address: token,
+          topics: [transferTopic]
+        }], network);
+        if (b2 && b2.error) {
+          const m2 = String(b2.error.message || b2.error);
+          if (isCapMsg(m2)) return { state: NONEMPTY, logs: null };
+          return { state: UNDET, logs: null };
+        }
+        if (b2?.result && b2.result.length) return { state: NONEMPTY, logs: b2.result };
+        return { state: EMPTY, logs: [] };
       }
       const msg = String(body.error.message || body.error);
       if (isCapMsg(msg)) return { state: NONEMPTY, logs: null };
@@ -307,7 +326,7 @@ async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network
   //    Inside the candidate, walk its 1M sub-windows left-to-right and bisect
   //    the first sub that is not confirmed empty.
   const COARSE = 4000000;
-  outer:
+  let candidateLo = null, candidateHi = null;
   for (let s = 0; s <= currentBlock; s += COARSE) {
     const e = Math.min(s + COARSE - 1, currentBlock);
     const r = await probe(s, e);
@@ -316,25 +335,48 @@ async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network
     // Candidate 4M window (NONEMPTY, or UNDET which we never skip). Walk its
     // 1M sub-windows left-to-right; bisect the first sub that isn't confirmed
     // empty. If every sub is confirmed empty, the 4M window was a flake-UNDET
-    // but is actually empty -> advance to the next 4M window (continue).
+    // but is actually empty -> advance to the next 4M window.
     for (let sub = s; sub <= e; sub += 1000000) {
       const subEnd = Math.min(sub + 999999, e);
       const sr = await probe(sub, subEnd);
       if (sr.state === EMPTY) continue;         // sub clean, next sub
-      // Nonempty (cap proves it) or undetermined (safe-early) sub holds it.
-      const launch = await firstTransferBlock(sub, subEnd);
-      console.log(`Launch block found: ${launch.toLocaleString()}`);
-      return launch;
+      candidateLo = sub; candidateHi = subEnd;
+      break;
     }
-    continue; // all sub-windows confirmed empty -> next 4M window
+    if (candidateLo !== null) break;
   }
 
-  if (Date.now() > deadline) {
-    console.log("Discovery deadline hit; token may exist but launch block is unknown");
+  if (candidateLo === null) {
+    if (Date.now() > deadline) {
+      console.log("Discovery deadline hit; token may exist but launch block is unknown");
+    } else {
+      console.log("No Transfer logs found anywhere; token may not exist on this network");
+    }
     return 0;
   }
-  console.log("No Transfer logs found anywhere; token may not exist on this network");
-  return 0;
+
+  // 2) Walk-back verification. The coarse walk trusted "empty" answers for
+  //    every earlier 4M window — but the load balancer's nodes have different
+  //    log-index retention floors, so an earlier window can read EMPTY on a
+  //    pruned node while still holding the real genesis. Re-probe each 4M
+  //    window strictly before the candidate; if any now reads NONEMPTY, the
+  //    true launch lives there and we re-bisect that window instead.
+  for (let s = 0; s < candidateLo; s += COARSE) {
+    if (Date.now() > deadline) break;
+    const e = Math.min(s + COARSE - 1, candidateLo - 1);
+    const r = await probe(s, e);
+    if (r.state === EMPTY || r.state === UNDET) continue;
+    // An earlier window actually HAS logs — bisect it for the true genesis.
+    console.log(`Walk-back: earlier window ${s.toLocaleString()} holds logs; re-bisecting`);
+    const launch = await firstTransferBlock(s, e);
+    console.log(`Launch block found: ${launch.toLocaleString()}`);
+    return launch;
+  }
+
+  // 3) Bisect the candidate window for the exact first-transfer block.
+  const launch = await firstTransferBlock(candidateLo, candidateHi);
+  console.log(`Launch block found: ${launch.toLocaleString()}`);
+  return launch;
 }
 
 // Get token metadata from explorer (with API key if available)
