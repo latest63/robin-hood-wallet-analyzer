@@ -953,6 +953,18 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 16px;
+  min-width: 0;
+}
+
+/* Meta row (badges + Explorer link) must never force the banner wider than
+   the viewport on mobile — it wraps, and the Explorer button gets its own
+   full-width row instead of overflowing the card frame. */
+.banner-meta {
+  min-width: 0;
+  max-width: 100%;
+}
+.banner-explorer {
+  max-width: 100%;
 }
 
 .token-banner > div:first-child {

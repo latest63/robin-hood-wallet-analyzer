@@ -221,11 +221,11 @@ export default function Scan() {
         <div className="token-banner fade-in card-glow">
           <div>
             <h3>{tokenInfo.name} ({tokenInfo.symbol})</h3>
-            <div className="text-sm text-muted mt-1 font-mono" style={{ fontSize: 12 }}>
+            <div className="text-sm text-muted mt-1 font-mono" style={{ fontSize: 12, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {tokenInfo.address}
             </div>
           </div>
-          <div className="flex gap-3 flex-wrap items-center">
+          <div className="flex gap-3 flex-wrap items-center banner-meta">
             <span className={`badge ${tokenInfo.network === 'testnet' ? 'badge-warning' : 'badge-primary'}`}>
               {tokenInfo.network === 'testnet' ? <TestTube size={12} /> : <Globe size={12} />}
               {tokenInfo.network === 'testnet' ? 'Testnet' : 'Mainnet'}
@@ -242,7 +242,7 @@ export default function Scan() {
               href={`https://${tokenInfo.network === 'testnet' ? 'explorer.testnet.chain.robinhood.com/address' : 'robinhoodchain.blockscout.com/address'}?address=${tokenInfo.address}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn btn-secondary"
+              className="btn btn-secondary banner-explorer"
               style={{ 
                 padding: '8px 12px', 
                 fontSize: 13, 
