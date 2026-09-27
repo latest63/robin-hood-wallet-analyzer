@@ -79,6 +79,68 @@ async function explorerCall(endpoint, apiKey = null, retries = 3) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Token metadata via the token's own contract (reliable; the mainnet explorer
+// is Cloudflare-gated and frequently fails). Reads symbol()/name()/decimals()
+// over eth_call so the UI shows a real symbol (e.g. "DENAR") not "TOKEN".
+// ---------------------------------------------------------------------------
+function decodeAbiString(ret) {
+  if (!ret || ret === '0x' || !ret.startsWith('0x')) return null;
+  const h = ret.slice(2);
+  if (h.length < 64) return null;
+  const bytesToText = (bytes) => {
+    const out = [];
+    for (let i = 0; i < bytes.length; i += 2) out.push(parseInt(bytes.slice(i, i + 2), 16));
+    let s;
+    try { s = Buffer.from(out).toString('utf8'); } catch (e) { return null; }
+    const cleaned = s.replace(/\0/g, '').trim();
+    return cleaned || null;
+  };
+  const offset = parseInt(h.slice(0, 64), 16);
+  // Solidity string ABI: offset(32) + length(32) + data
+  if (offset === 32 && h.length >= 128) {
+    const len = parseInt(h.slice(64, 128), 16);
+    if (Number.isFinite(len) && len > 0) {
+      const t = bytesToText(h.slice(128, 128 + Math.min(len, 4096) * 2));
+      if (t) return t;
+    }
+  }
+  // bytes32 / fixed-length symbol: value lives in the first 32 bytes
+  return bytesToText(h.slice(0, 64));
+}
+
+async function getRPCTokenInfo(token, network) {
+  const out = { name: null, symbol: null, decimals: null };
+  const call = async (data) => {
+    try {
+      const body = await rpcCallFull('eth_call', [{ to: token, data }, 'latest'], network);
+      return (!body || !body.error) ? body?.result : null;
+    } catch (e) { return null; }
+  };
+  const sym = await call('0x95d89b41');      // symbol()
+  if (sym) out.symbol = decodeAbiString(sym);
+  const name = await call('0x06fdade0');     // name() — some tokens revert
+  if (name) out.name = decodeAbiString(name);
+  const dec = await call('0x313ce567');      // decimals()
+  if (dec && dec !== '0x' && dec.startsWith('0x')) {
+    try { out.decimals = BigInt(dec).toString(); } catch (e) {}
+  }
+  return out;
+}
+
+// Server-Sent Events helpers for live progress streaming to the UI.
+function sseInit(res) {
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+}
+function sse(res, event, data) {
+  try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {}
+}
+
 function ethHex(val) {
   const h = BigInt(val).toString(16);
   return _HEX + h;
@@ -249,9 +311,13 @@ async function findCreationBlockBinarySearch(tokenAddress, currentBlock, network
 // Flow: 4M coarse walk -> anchor a window -> walk its 1M subs left-to-right ->
 // bisect the anchor sub (cap = NONEMPTY, flake = keep-left, deadline =
 // return anchor start). Deterministic ~25-35 probes in normal conditions.
-async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network, deadline = null) {
+async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network, deadline = null, onProgress = null) {
   console.log("Locating launch block (first Transfer event) via log-index scan...");
   if (deadline === null) deadline = Date.now() + 60000; // bounded: leave room for the scan
+  // onProgress(percent, label) — stage-1 progress, mapped into 0..24% of the
+  // overall scan. Safe no-op if not provided.
+  const report = (pct, label) => { if (onProgress) { try { onProgress(pct, label); } catch (e) {} } };
+  report(0, "Searching Robin Hood Chain log index for the launch...");
 
   const EMPTY = "empty", NONEMPTY = "nonempty", UNDET = "undetermined";
   // A 10k-log "exceeds limit / 10000 / too many" error PROVES the range is
@@ -329,6 +395,9 @@ async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network
   let candidateLo = null, candidateHi = null;
   for (let s = 0; s <= currentBlock; s += COARSE) {
     const e = Math.min(s + COARSE - 1, currentBlock);
+    // Stage-1 progress = how far across the chain we've searched (0..100%).
+    report(Math.min(99, Math.round((s / currentBlock) * 100)),
+      `Searching ${currentBlock.toLocaleString()} blocks…`);
     const r = await probe(s, e);
     if (r.state === EMPTY) continue;            // confirmed clean, advance
 
@@ -361,9 +430,13 @@ async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network
   //    pruned node while still holding the real genesis. Re-probe each 4M
   //    window strictly before the candidate; if any now reads NONEMPTY, the
   //    true launch lives there and we re-bisect that window instead.
+  let walkCount = 0;
+  const walkTotal = Math.max(1, Math.ceil(candidateLo / COARSE));
   for (let s = 0; s < candidateLo; s += COARSE) {
     if (Date.now() > deadline) break;
     const e = Math.min(s + COARSE - 1, candidateLo - 1);
+    report(90 + Math.round((walkCount / walkTotal) * 9), "Verifying earlier windows didn't hold the genesis...");
+    walkCount++;
     const r = await probe(s, e);
     if (r.state === EMPTY || r.state === UNDET) continue;
     // An earlier window actually HAS logs — bisect it for the true genesis.
@@ -404,22 +477,53 @@ async function getTokenMetadata(tokenAddress, network) {
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+
   if (req.method === "OPTIONS") return res.status(200).end();
-  
+
+  // SSE flag + final-payload helper live at function scope so the catch block
+  // can route its error through the active transport too.
+  let wantSSE = false;
+  const finish = (payload, status = 200) => {
+    if (wantSSE) {
+      sse(res, status === 200 ? "result" : "error", payload);
+      res.end();
+    } else {
+      res.status(status).json(payload);
+    }
+    return null;
+  };
+
   try {
     const { address, network = "mainnet" } = req.method === "POST" ? req.body : req.query;
     if (!address?.startsWith(_HEX)) {
       return res.status(400).json({ error: "Invalid address" });
     }
-    
+
+    // Stream live progress to the browser via Server-Sent Events when the
+    // client opts in (the frontend sends Accept: text/event-stream). The old
+    // path (plain JSON) is preserved for anything that doesn't.
+    wantSSE = String(req.headers["accept"] || "").includes("text/event-stream");
+    if (wantSSE) sseInit(res);
+
     const isTestnet = network === "testnet";
     console.log(`\n=== Scanning ${network}: ${address} ===`);
-    
-    const TOKEN = toLower(address); // Full lowercase address for RPC
+
+    const tokenAddr = address.toLowerCase(); // Full lowercase address for RPC
     const TRANSFER_TOPIC = _HEX + "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-    
+
+    // Progress emitter: monotonic 0..100, three logical stages (0 find launch,
+    // 1 scan transfers, 2 compile buyers). Written to the client as SSE when
+    // streaming, logged otherwise.
+    let lastPct = -1;
+    const emit = (pct, stage, label) => {
+      pct = Math.max(0, Math.min(100, Math.round(pct)));
+      if (pct <= lastPct) return;
+      lastPct = pct;
+      if (wantSSE) sse(res, "progress", { pct, stage, label: label || "" });
+      else console.log(`[progress ${pct}%] stage ${stage} ${label || ""}`);
+    };
+
     // Get current block
     const blockHex = await rpcCall("eth_blockNumber", [], network);
     const currentBlock = parseInt(blockHex, 16);
@@ -428,7 +532,35 @@ export default async function handler(req, res) {
     // One shared budget for discovery + scan, 10s under the 180s Vercel cap so
     // the function always answers (partial result beats a platform timeout).
     const overallDeadline = Date.now() + 170000;
-    
+
+    emit(3, 0, "Connected to Robin Hood Chain — locating the token...");
+
+    // Token metadata: the token's own contract is the source of truth for
+    // name/symbol/decimals (the mainnet explorer is Cloudflare-gated and often
+    // fails). The explorer still supplements holders/creator/creation-tx when
+    // reachable.
+    const rpcInfo = await getRPCTokenInfo(tokenAddr, network);
+    let metadata = {
+      name: rpcInfo.name || rpcInfo.symbol || "TOKEN",
+      symbol: rpcInfo.symbol || "",
+      decimals: rpcInfo.decimals,
+      holders: 0,
+      creationTxHash: null,
+      creatorAddress: null,
+    };
+    let creatorAddress = null;
+    try {
+      const ex = await getTokenMetadata(tokenAddr, network);
+      if (ex.symbol) metadata.symbol = ex.symbol;
+      if (ex.name && ex.name !== "TOKEN") metadata.name = ex.name;
+      metadata.holders = ex.holders || 0;
+      metadata.creationTxHash = ex.creationTxHash;
+      if (ex.creatorAddress) creatorAddress = toLower(ex.creatorAddress);
+    } catch (e) {
+      console.log(`Explorer metadata unavailable, using contract RPC: ${e.message}`);
+    }
+    console.log(`metadata: name=${metadata.name} symbol=${metadata.symbol} decimals=${metadata.decimals} holders=${metadata.holders} creator=${creatorAddress}`);
+
     // Discover token creation block
     console.log("\n[1/3] Discovering token creation block...");
     
@@ -436,35 +568,25 @@ export default async function handler(req, res) {
     // can reference it without a temporal-dead-zone error).
     const MAX_SCAN_BLOCKS = 200000;
 
-    // Try explorer first (faster with API key)
+    // Fast path: if the explorer gave us a creation tx, its block is the
+    // launch (cheap, one more call). Fallbacks below otherwise.
     let startBlock = null;
-    let metadata = { name: "TOKEN", symbol: "", holders: 0 };
-    let creatorAddress = null;
-    
-    try {
-      metadata = await getTokenMetadata(TOKEN, network);
-      creatorAddress = metadata.creatorAddress ? toLower(metadata.creatorAddress) : null;
-      console.log(`DEBUG metadata: creationTx=${metadata.creationTxHash} creator=${creatorAddress} name=${metadata.name}`);
-      
-      // Only creationTxHash is needed to find the start block. Creator is
-      // decoupled so a missing creator_address_hash doesn't block discovery.
-      if (metadata.creationTxHash) {
+    if (metadata.creationTxHash) {
+      try {
         const txResp = await explorerCall(
           `${EXPLORER_URLS[network]}/transactions/${metadata.creationTxHash}`,
           network === 'mainnet' ? MAINNET_API_KEY : null
         );
-        console.log(`DEBUG txResp.block_number=${txResp?.block_number} (type ${typeof txResp?.block_number})`);
-        
         const txBlock = parseExplorerBlock(txResp?.block_number);
         if (txBlock != null) {
           startBlock = txBlock;
           console.log(`Found creation block via explorer: ${startBlock.toLocaleString()}`);
         }
+      } catch (e) {
+        console.log(`Explorer creation-block lookup failed: ${e.message}`);
       }
-    } catch (e) {
-      console.log(`Explorer discovery failed: ${e.message}, using RPC binary search`);
     }
-    
+
     // Fallback when the explorer doesn't yield a creation block.
     //  - Testnet: RPC is pruned, so anchor at a recent window.
     //  - Mainnet: historical STATE is pruned (eth_getCode errors on old
@@ -478,8 +600,14 @@ export default async function handler(req, res) {
         console.log(`Testnet: using recent-window fallback (last ${MAX_SCAN_BLOCKS.toLocaleString()} blocks)`);
       } else {
         // Discovery gets its own sub-budget (90s) so the scan always keeps a
-        // meaningful share of the overall deadline.
-        startBlock = await findLaunchBlockByLogs(TOKEN, TRANSFER_TOPIC, currentBlock, network, Math.min(overallDeadline, Date.now() + 90000));
+        // meaningful share of the overall deadline. Stage 1 maps 4% -> 24%.
+        emit(4, 0, "Finding launch block…");
+        const discoveryDone = await findLaunchBlockByLogs(
+          tokenAddr, TRANSFER_TOPIC, currentBlock, network,
+          Math.min(overallDeadline, Date.now() + 90000),
+          (pct, label) => emit(4 + (pct / 100) * 20, 0, label || "Finding launch block…")
+        );
+        startBlock = discoveryDone;
         if (!startBlock) {
           // Discovery failed (RPC flake storm or deadline) — NEVER scan from
           // block 0: that wastes the whole function on 200K empty blocks and
@@ -489,6 +617,7 @@ export default async function handler(req, res) {
         }
       }
     }
+    emit(24, 0, "Launch block found");
     
     // Scan transfers — bounded window so it always completes inside the
     // Vercel function timeout. Early buyers live in the launch window, so we
@@ -507,7 +636,7 @@ export default async function handler(req, res) {
     const seedStats = { failedChunks: 0, failedBlocks: 0 };
     let seedWallet = null;
     try {
-      const seedLogs = await fetchTransferLogs(TOKEN, TRANSFER_TOPIC, startBlock, startBlock + 500, network, 0, seedStats);
+      const seedLogs = await fetchTransferLogs(tokenAddr, TRANSFER_TOPIC, startBlock, startBlock + 500, network, 0, seedStats);
       if (seedStats.failedChunks) {
         console.log(`Seed detection hit ${seedStats.failedChunks} transient RPC failure(s); seed may be mis-detected`);
       }
@@ -537,6 +666,7 @@ export default async function handler(req, res) {
     // (discovery + scan) so the two never add up past the 180s Vercel cap.
     const deadline = overallDeadline;
 
+    emit(25, 1, "Scanning launch-window transfers...");
     for (let start = startBlock; start <= scanEnd; start += chunkSize) {
       const end = Math.min(start + chunkSize - 1, scanEnd);
 
@@ -545,13 +675,12 @@ export default async function handler(req, res) {
         break;
       }
 
-      // Progress every 50K blocks (scan window is bounded to 200K)
-      if ((start - startBlock) % 50000 === 0 && start > startBlock) {
-        const progress = ((start - startBlock) / (scanEnd - startBlock) * 100).toFixed(0);
-        console.log(`  Progress: ${progress}% (${logCount} logs)`);
-      }
+      // Real backend progress: how far we are through the bounded scan window,
+      // mapped into 25% -> 88% of the overall bar (stage 1 = scanning).
+      const frac = scanEnd > startBlock ? (start - startBlock) / (scanEnd - startBlock) : 1;
+      emit(25 + frac * 63, 1, `Reading transfer logs… ${logCount.toLocaleString()} so far`);
 
-      const logs = await fetchTransferLogs(TOKEN, TRANSFER_TOPIC, start, end, network, 0, scanStats);
+      const logs = await fetchTransferLogs(tokenAddr, TRANSFER_TOPIC, start, end, network, 0, scanStats);
 
       if (!logs?.length) continue;
       logCount += logs.length;
@@ -582,17 +711,19 @@ export default async function handler(req, res) {
     // instead of returning a plausible-looking empty result.
     if (scanStats.failedChunks > 0 && logCount === 0) {
       console.error(`Scan lost ${scanStats.failedChunks} chunk(s) (${scanStats.failedBlocks} blocks) to transient RPC errors; failing honestly`);
-      return res.status(503).json({
+      return finish({
         error: "The chain RPC is flaky right now — the scan lost data. Please retry in a minute.",
         transient: true,
         token: address,
         network
-      });
+      }, 503);
     }
 
+    // Stage 2: compiling the early-buyer ranking.
+    emit(89, 2, "Ranking earliest buyers...");
     const partial = Date.now() > deadline;
     console.log(`\nScan complete: ${logCount} transfers from ${Object.keys(allBuyers).length} unique wallets${partial ? " (PARTIAL — deadline)" : ""}${scanStats.failedChunks ? ` (${scanStats.failedChunks} chunk(s) lost)` : ""}`);
-    
+
     // Format results (convert BigInt to string for JSON)
     const buyers = Object.entries(allBuyers)
       .map(([addr, data]) => ({
@@ -603,15 +734,19 @@ export default async function handler(req, res) {
       }))
       .sort((a, b) => a.firstBlock - b.firstBlock) // earliest first = early buyers
       .slice(0, 20);
-    
+
+    emit(96, 2, "Building results...");
     const result = {
       token: address,
       tokenName: metadata.name,
       tokenSymbol: metadata.symbol,
+      tokenDecimals: metadata.decimals,
       uniqueWallets: Object.keys(allBuyers).length,
       holdersCount: metadata.holders,
       totalTransfers: logCount,
       network,
+      partial,
+      launchBlock: startBlock,
       earlyBuyers: buyers.map(b => ({
         wallet: b.address,
         amount: b.total,
@@ -619,36 +754,13 @@ export default async function handler(req, res) {
         timestamp: null
       }))
     };
-    
-    // Test serialization before sending
-    try {
-      const testJson = JSON.stringify(result);
-      console.log('Serialization test OK, length:', testJson.length);
-    } catch (e) {
-      console.error('JSON serialization failed:', e.message);
-      // Debug: check each field
-      for (const key of Object.keys(result)) {
-        const val = result[key];
-        if (val && typeof val === 'object') {
-          for (const subKey of Object.keys(val)) {
-            const subVal = val[subKey];
-            if (typeof subVal === 'bigint') {
-              console.error(`  Found BigInt at ${key}.${subKey}`);
-              val[subKey] = subVal.toString();
-            }
-          }
-        } else if (typeof val === 'bigint') {
-          console.error(`  Found BigInt at ${key}`);
-          result[key] = val.toString();
-        }
-      }
-    }
-    
-    return res.status(200).json(result);
-    
+
+    emit(100, 2, "Done");
+    return finish(result, 200);
+
   } catch (error) {
     console.error("Scan error:", error);
-    return res.status(500).json({ error: error.message });
+    return finish({ error: error.message }, 500);
   }
 }
 // Force redeploy

@@ -11,7 +11,9 @@ export default function Scan() {
   const [network, setNetwork] = useState('mainnet'); // 'mainnet' | 'testnet'
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
-  const [progress, setProgress] = useState('');
+  const [scanStage, setScanStage] = useState(0);   // 0 find launch · 1 scan transfers · 2 compile buyers
+  const [scanPct, setScanPct] = useState(0);        // 0..100, driven by live backend SSE
+  const [scanLabel, setScanLabel] = useState('');
   const [tokenInfo, setTokenInfo] = useState(null);
   const [earlyBuyers, setEarlyBuyers] = useState([]);
   const [selectedTraders, setSelectedTraders] = useState(new Set());
@@ -27,27 +29,82 @@ export default function Scan() {
 
     setScanning(true);
     setError(null);
-    setProgress('Initializing scan...');
+    setScanStage(0);
+    setScanPct(0);
+    setScanLabel('Connecting…');
     setTokenInfo(null);
     setEarlyBuyers([]);
     setSelectedTraders(new Set());
 
     try {
-      const resp = await fetch(`/api/scan?address=${tokenAddress}&network=${network}`);
-      const result = await resp.json();
-      
-      if (result.error) {
-        throw new Error(result.error);
+      const resp = await fetch(`/api/scan?address=${tokenAddress}&network=${network}`, {
+        headers: { Accept: 'text/event-stream' }
+      });
+
+      // Fallback: if the server answered plain JSON (no streaming), read it all
+      // at once. Otherwise consume the SSE stream and update the UI live.
+      const ctype = resp.headers.get('content-type') || '';
+      if (ctype.includes('application/json') || !resp.body) {
+        const result = await resp.json();
+        if (result.error) throw new Error(result.error);
+        applyResult(result);
+        return;
       }
 
-      setProgress('Parsing results...');
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let done = false;
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        if (streamDone) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE frames are separated by a blank line.
+        let idx;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          let eventName = 'message';
+          let data = '';
+          for (const line of frame.split('\n')) {
+            if (line.startsWith('event:')) eventName = line.slice(6).trim();
+            else if (line.startsWith('data:')) data += line.slice(5).trim();
+          }
+          if (!data) continue;
+          let payload;
+          try { payload = JSON.parse(data); } catch (e) { continue; }
+          if (eventName === 'progress') {
+            setScanStage(payload.stage ?? 0);
+            setScanPct(payload.pct ?? 0);
+            if (payload.label) setScanLabel(payload.label);
+          } else if (eventName === 'result') {
+            applyResult(payload);
+            done = true;
+            break;
+          } else if (eventName === 'error') {
+            throw new Error(payload.error || 'Scan failed');
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Scan error:', err);
+      setError(err.message || 'Failed to scan token');
+    } finally {
+      setScanning(false);
+    }
 
-      // Use real token name and symbol from API if available, otherwise truncate address
+    // Shared result renderer (used by both the JSON fallback and the SSE path).
+    function applyResult(result) {
+      setScanPct(100);
+      // Use real token name and symbol from API if available, otherwise fall
+      // back to a short address fragment (never a bare "TOKEN").
       const rawName = result.tokenName?.replace(/[\x00-\x1F]/g, '').trim();
       const rawSymbol = result.tokenSymbol?.replace(/[\x00-\x1F]/g, '').trim();
-      const tokenName = rawName || result.token?.substring(2, 10) + '...';
-      const tokenSymbol = rawSymbol || 'TOKEN';
-      const isTestnet = result.network === 'testnet';
+      const shortAddr = result.token?.slice(2, 6) + '...' + result.token?.slice(-4);
+      const tokenName = (rawName && rawName !== 'TOKEN') || rawSymbol
+        ? (rawName || shortAddr)
+        : shortAddr;
+      const tokenSymbol = rawSymbol || shortAddr;
 
       setTokenInfo({
         name: tokenName,
@@ -60,7 +117,6 @@ export default function Scan() {
       });
 
       const earlyData = result.earlyBuyers || [];
-
       setEarlyBuyers(earlyData.map(item => ({
         wallet: item.wallet,
         amount: item.amount,
@@ -72,13 +128,6 @@ export default function Scan() {
       const autoSelected = new Set();
       earlyData.forEach((_, i) => autoSelected.add(i));
       setSelectedTraders(autoSelected);
-
-    } catch (err) {
-      console.error('Scan error:', err);
-      setError(err.message || 'Failed to scan token');
-    } finally {
-      setScanning(false);
-      setProgress('');
     }
   };
 
@@ -208,8 +257,47 @@ export default function Scan() {
         </div>
       </div>
 
-      {progress && (
-        <div className="progress fade-in">{progress}</div>
+      {scanning && (
+        <div className="scan-progress card fade-in" role="status" aria-live="polite">
+          <div className="scan-progress-head">
+            <div>
+              <div className="scan-progress-title">Scanning token…</div>
+              <div className="scan-progress-label">{scanLabel || 'Working'}</div>
+            </div>
+            <div className="scan-progress-pct">{scanPct}<span>%</span></div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="bar" aria-hidden="true">
+            <div
+              className="bar-fill"
+              style={{ width: `${Math.max(3, scanPct)}%` }}
+            />
+          </div>
+
+          {/* 3 stages — active = current, done = passed */}
+          <div className="scan-stages">
+            {[
+              { n: 0, t: 'Find launch block' },
+              { n: 1, t: 'Scan transfers' },
+              { n: 2, t: 'Rank early buyers' }
+            ].map((s) => {
+              const state = scanStage > s.n ? 'done' : scanStage === s.n ? 'active' : 'todo';
+              return (
+                <div key={s.n} className={`scan-stage ${state}`}>
+                  <span className="scan-stage-dot">
+                    {state === 'done' ? '✓' : s.n + 1}
+                  </span>
+                  <span className="scan-stage-text">{s.t}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="scan-progress-foot">
+            Heavy tokens can take 1–2 minutes. This screen updates in real time as the scan runs.
+          </div>
+        </div>
       )}
 
       {error && (
@@ -220,7 +308,7 @@ export default function Scan() {
       {tokenInfo && (
         <div className="token-banner fade-in card-glow">
           <div>
-            <h3>{tokenInfo.name} ({tokenInfo.symbol})</h3>
+            <h3>{tokenInfo.name} {String(tokenInfo.symbol).toUpperCase() !== String(tokenInfo.name).toUpperCase() ? `(${tokenInfo.symbol})` : ''}</h3>
             <div className="text-sm text-muted mt-1 font-mono" style={{ fontSize: 12, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
               {tokenInfo.address}
             </div>
