@@ -110,8 +110,16 @@ async function rpcCallFull(method, params, network = "mainnet", retries = 3) {
         body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 })
       });
       if (res.status === 429) {
+        // Rate-limited — back off and retry.
         await new Promise(r => setTimeout(r, 3000 * (i + 1)));
         continue;
+      }
+      if (res.status >= 400) {
+        // 403/502/503 from the load-balanced RHC RPC is TRANSIENT — it is NOT a
+        // valid JSON-RPC result. Wrap it as an error so the caller's transient
+        // retry loop actually retries (previously this returned res.json() and
+        // the whole range was wrongly marked "undetermined").
+        return { error: { code: res.status, message: `rpc http ${res.status}` } };
       }
       return await res.json();
     } catch (e) {
@@ -235,11 +243,27 @@ async function findLaunchBlockByLogs(token, transferTopic, currentBlock, network
     const e = Math.min(s + COARSE - 1, currentBlock);
     let r = await hasLogs(s, e);
     if (r.logs === null) {
-      // Undetermined — probe 1M sub-windows before deciding
+      // Undetermined (RPC gave up on this window). The launch may STILL be in
+      // it. Probe 1M sub-windows; if any is confirmed non-empty, anchor the
+      // tightest one. If every sub-window is undetermined too, anchor at the
+      // window START — we have already proven every EARLIER window empty, so
+      // the genesis (first non-empty window) must be here or later. NEVER skip
+      // an undetermined window: that is what previously caused the scanner to
+      // adopt the next (later) window and miss the true genesis.
+      let anchored = false;
       for (let sub = s; sub <= e; sub += 1000000) {
         r = await hasLogs(sub, Math.min(sub + 999999, e));
-        if (r.logs && r.logs.length) { targetFrom = sub; targetTo = Math.min(sub + 999999, e); break outer; }
-        if (r.logs === null) continue; // empty
+        if (r.logs && r.logs.length) {
+          targetFrom = sub; targetTo = Math.min(sub + 999999, e);
+          anchored = true;
+          break outer;
+        }
+        // r.logs null -> keep probing the next 1M sub-window
+      }
+      if (!anchored) {
+        console.log(`Coarse window ${s.toLocaleString()} undetermined; anchoring scan at its start`);
+        targetFrom = s; targetTo = e;
+        break;
       }
       continue;
     }
