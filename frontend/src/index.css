@@ -1322,6 +1322,20 @@ h1, h2, h3, h4, h5, h6 {
 .wallet-card .cluster-radar-slot {
   align-self: center;
 }
+
+/* Left column of a card row must be able to shrink, or long names/addresses
+   push the fixed-width right side (radar + View/Delete) past the frame.
+   min-width:0 makes the truncation below actually apply. */
+.wallet-card-left {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 @media (max-width: 640px) {
   .wallet-card { flex-wrap: wrap; }
   .cluster-radar-slot {

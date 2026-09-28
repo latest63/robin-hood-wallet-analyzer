@@ -125,8 +125,8 @@ export default function Dashboard() {
             {clusters.map(cluster => (
               <div key={cluster.id} className="wallet-card">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 15 }}>{cluster.name}</div>
+                  <div className="wallet-card-left">
+                    <div className="card-name" style={{ fontWeight: 600, fontSize: 15 }}>{cluster.name}</div>
                     <div className="text-sm text-muted mt-1 flex items-center gap-2 flex-wrap">
                       {cluster.token_symbol && (
                         <span className="badge badge-success">
