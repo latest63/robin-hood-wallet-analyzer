@@ -263,7 +263,8 @@
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  /* min() keeps the 280px floor from forcing overflow on <280px viewports */
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 24px;
 }
 
@@ -503,6 +504,13 @@ body {
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Hard structural guard: no page may ever scroll horizontally.
+   `clip` (not `hidden`) so sticky positioning keeps working. */
+html,
+body {
+  overflow-x: clip;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -1255,6 +1263,12 @@ h1, h2, h3, h4, h5, h6 {
   padding: 8px;
 }
 
+/* Columns that must be able to shrink (so fixed-width siblings never push
+   the page wider than the viewport). */
+.min-0 {
+  min-width: 0;
+}
+
 @media (max-width: 768px) {
   .menu-toggle { display: block; }
   .nav-links {
@@ -1325,22 +1339,92 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Left column of a card row must be able to shrink, or long names/addresses
    push the fixed-width right side (radar + View/Delete) past the frame.
-   min-width:0 makes the truncation below actually apply. */
+   min-width:0 makes the truncation below actually apply.
+   Monitor cards use the same row shape (`.wallet-card > .flex`), so both are
+   covered — their left column shrinks and truncates too. */
 .wallet-card-left {
   flex: 1 1 auto;
   min-width: 0;
 }
-.card-name {
+.card-name,
+.wallet-card .card-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
+/* Monitor card rows: the left `<div>` has no class, so select it structurally.
+   It must shrink/truncate the same way `.wallet-card-left` does. */
+.wallet-card > .flex > div:first-child {
+  min-width: 0;
+  overflow: hidden;
+}
+/* The radar slot is a fixed 120px box — it must never participate in the
+   row's stretch and must never force the row wider than available space. */
+.cluster-radar-slot {
+  flex-shrink: 0;
+}
+/* View/Delete + Stop/Webhook button groups: allow shrinking so the row's
+   overflow (if any remains on ultra-narrow screens) is absorbed by the left
+   column, not by pushing buttons off-screen. */
+.wallet-card .flex.gap-2 {
+  flex-shrink: 0;
+}
+
+/* Mobile: the card row is `.wallet-card > .flex`, NOT `.wallet-card` itself —
+   the earlier 640px rule targeted the non-flex parent, so it was dead code.
+   On phones: stack the radar onto its own full-width row so the name/meta and
+   the action buttons each get the full width they need. The 112px radar sits
+   in its own row, so it fits any phone width. */
 @media (max-width: 640px) {
-  .wallet-card { flex-wrap: wrap; }
-  .cluster-radar-slot {
-    align-self: flex-start;
+  .wallet-card > .flex {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  .wallet-card > .flex > .cluster-radar-slot {
     order: 3;
     width: 100%;
+    align-self: flex-start;
+  }
+  .wallet-card > .flex > .flex.gap-2 {
+    order: 2;
+    margin-left: auto;
+  }
+}
+
+/* Global mobile rules: no element may force the page wider than the viewport.
+   This is the permanent guarantee the user asked for — headers, rows, stats
+   and inputs all wrap/truncate on phones instead of scrolling sideways. */
+@media (max-width: 640px) {
+  .card { padding: 20px; }
+  .stat-card { padding: 16px; }
+  .stat-value {
+    font-size: 22px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  /* Every `.flex` row (page headers, card rows, stat rows) wraps instead of
+     pushing the page into horizontal scroll. */
+  .flex {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  .section-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .search-box .input-group {
+    flex-wrap: wrap;
+  }
+  .search-box input {
+    min-width: 0;
+  }
+  /* Radar tooltip: keep it inside the card on phones */
+  .radar-tooltip {
+    white-space: normal;
+    max-width: 100px;
+    text-align: center;
   }
 }

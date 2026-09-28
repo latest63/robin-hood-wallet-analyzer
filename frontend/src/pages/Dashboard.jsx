@@ -189,8 +189,8 @@ export default function Dashboard() {
             {monitors.map(monitor => (
               <div key={monitor.id} className="wallet-card">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 15 }}>
+                  <div className="wallet-card-left">
+                    <div className="card-name" style={{ fontWeight: 600, fontSize: 15 }}>
                       {monitor.clusters?.name || 'Unknown Cluster'}
                     </div>
                     <div className="text-sm text-muted mt-1 flex items-center gap-2">
