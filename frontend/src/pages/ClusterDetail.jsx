@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { supabase, startMonitor } from '../lib/supabase';
-import ClusterRadar from '../components/ClusterRadar';
-import { Loader2, ArrowLeft, Bell, ExternalLink, Copy, Check, Wallet, TrendingUp, Clock, Radar } from 'lucide-react';
+import ClusterMirror from '../components/ClusterMirror';
+import { Loader2, ArrowLeft, Bell, ExternalLink, Copy, Check, Wallet, TrendingUp, Clock, Activity } from 'lucide-react';
 
 export default function ClusterDetail() {
   const { id } = useParams();
@@ -14,15 +14,10 @@ export default function ClusterDetail() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [monitoring, setMonitoring] = useState(false);
   const [copied, setCopied] = useState(null);
-  // Responsive hero radar: 180px on phones-and-up, 140px on very narrow screens.
-  const [radarSize, setRadarSize] = useState(180);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 480px)');
-    const sync = () => setRadarSize(mq.matches ? 140 : 180);
-    sync();
-    mq.addEventListener('change', sync);
-    return () => mq.removeEventListener('change', sync);
-  }, []);
+  // Cluster Mirror live re-buy feed + its poll cursor.
+  const [liveEvents, setLiveEvents] = useState([]);
+  const [liveError, setLiveError] = useState(null);
+  const sinceRef = useRef(null);
 
   useEffect(() => {
     if (address && id) {
@@ -87,6 +82,50 @@ export default function ClusterDetail() {
   const totalProfit = wallets.reduce((sum, w) => sum + (w.profit || 0), 0);
   const avgPnl = wallets.length > 0 ? wallets.reduce((sum, w) => sum + (w.pnl_pct || 0), 0) / wallets.length : 0;
 
+  // Cluster Mirror: poll /api/rebuys for live re-buys by the tracked wallets.
+  // The cursor (sinceRef) advances to the latest scanned block after each poll
+  // so a re-buy only flares once. 8s cadence is cheap — each poll is one
+  // bounded getLogs window + a couple of lightweight RPCs.
+  useEffect(() => {
+    const token = cluster?.token_address;
+    const walletList = (wallets || []).map(w => w.wallet_address).filter(Boolean);
+    if (!token || walletList.length === 0 || !address) return;
+    let stopped = false;
+    const walletsParam = walletList.slice(0, 60).join(',');
+    const poll = async () => {
+      try {
+        const since = sinceRef.current != null ? `&since=${sinceRef.current}` : '';
+        const url = `/api/rebuys?token=${encodeURIComponent(token)}&network=mainnet&wallets=${encodeURIComponent(walletsParam)}${since}`;
+        const r = await fetch(url);
+        const data = await r.json();
+        if (data.latest && data.latest > 0) sinceRef.current = data.latest;
+        if (Array.isArray(data.events)) {
+          if (!stopped) {
+            setLiveEvents(prev => {
+              const merged = [...data.events, ...prev];
+              const seen = new Set();
+              return merged.filter(e => {
+                if (!e || seen.has(e.txHash + e.wallet)) return false;
+                seen.add(e.txHash + e.wallet);
+                return true;
+              }).slice(0, 40);
+            });
+            if (data.events.length > 0) setLiveError(null);
+          }
+        }
+        if (data.error && !Array.isArray(data.events) && !stopped) {
+          setLiveError(String(data.error));
+        }
+      } catch (e) {
+        if (!stopped) setLiveError('re-buy feed unavailable');
+      }
+    };
+    sinceRef.current = null; // start fresh on mount
+    poll();
+    const t = setInterval(poll, 8000);
+    return () => { stopped = true; clearInterval(t); };
+  }, [address, cluster?.token_address, wallets]);
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 0' }}>
@@ -133,17 +172,22 @@ export default function ClusterDetail() {
         </a>
       </div>
 
-      {/* Cluster radar — focal visualization */}
+      {/* Cluster Mirror — living constellation of the cluster's wallets around
+          the shared token. When a tracked wallet re-buys, its satellite ignites
+          and fires a beam to the core (live re-buy feed below the canvas). */}
       <div className="card">
         <div className="section-header">
           <h2 style={{ fontSize: 18, fontWeight: 600 }}>
-            <Radar size={18} style={{ color: 'var(--primary)' }} />
-            Cluster Radar
+            <Activity size={18} style={{ color: 'var(--primary)' }} />
+            Cluster Mirror
           </h2>
-          <span className="text-sm text-muted">blip = wallet · distance &amp; size = profit · solid = positive PnL, hollow = negative</span>
+          <span className="text-sm text-muted">wallets orbit {cluster.token_symbol || 'the token'} · a re-buy ignites that wallet</span>
         </div>
-        <div className="cluster-radar-slot" style={{ margin: '24px auto' }}>
-          <ClusterRadar wallets={wallets} size={radarSize} />
+        <div className="mirror-slot">
+          <ClusterMirror wallets={wallets} events={liveEvents} symbol={cluster.token_symbol || 'TOKEN'} />
+          {liveError && (
+            <p className="mirror-note text-sm text-muted mt-2">{liveError} — retrying…</p>
+          )}
         </div>
       </div>
 
@@ -157,7 +201,7 @@ export default function ClusterDetail() {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">${totalProfit.toLocaleString()}</div>
+          <div className="stat-value" title={`$${totalProfit.toLocaleString()}`}>${totalProfit.toLocaleString()}</div>
           <div className="stat-label">
             <TrendingUp size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
             Total Profit

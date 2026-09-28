@@ -783,6 +783,11 @@ h1, h2, h3, h4, h5, h6 {
   padding: 20px;
   text-align: center;
   transition: all 0.3s ease;
+  /* Allow the card to shrink below its content's min-width. Without this, a
+     long non-breakable number (e.g. the raw total-profit value) forces the
+     card wider than the frame and the global overflow-x:clip hard-cuts it. */
+  min-width: 0;
+  overflow: hidden;
 }
 
 .stat-card:hover {
@@ -798,6 +803,13 @@ h1, h2, h3, h4, h5, h6 {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   line-height: 1.2;
+  /* Truncate instead of forcing the card wider. The full value stays available
+     via `title` (hover / long-press). */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .stat-label {
@@ -836,13 +848,17 @@ h1, h2, h3, h4, h5, h6 {
   gap: 16px;
 }
 
-.grid-2 { grid-template-columns: repeat(2, 1fr); }
-.grid-3 { grid-template-columns: repeat(3, 1fr); }
-.grid-4 { grid-template-columns: repeat(4, 1fr); }
+/* minmax(0, 1fr) — a plain `1fr` track keeps a min-content floor, so a long
+   number inside a card forces the track (and the row) wider than the frame,
+   which the global overflow-x:clip then hard-cuts. min(0, …) lets the track
+   shrink to the available width so card content truncates instead. */
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 @media (max-width: 768px) {
   .grid-2, .grid-3, .grid-4 {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .main { padding: 16px; }
 }
@@ -1432,5 +1448,157 @@ h1, h2, h3, h4, h5, h6 {
     white-space: normal;
     max-width: 100px;
     text-align: center;
+  }
+}
+
+/* ===================================
+   Cluster Mirror — living constellation
+   =================================== */
+/* The mirror fills its card on phones (width:100%) but is capped on desktop so
+   it stays a focal element, not a giant blob. Mobile-first, no overflow. */
+.cluster-mirror {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+.mirror-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+}
+.mirror-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.6);
+  animation: mirror-pulse 1.8s ease-out infinite;
+  flex-shrink: 0;
+}
+.mirror-live-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--primary);
+}
+.mirror-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.mirror-lastseen {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--warning);
+  margin-left: auto;
+}
+.mirror-canvas-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+  aspect-ratio: 1 / 1;
+}
+.mirror-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.mirror-tooltip {
+  position: absolute;
+  transform: translateX(-50%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 3px 9px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 4px 16px rgba(249, 115, 22, 0.25);
+}
+
+/* Live re-buy ticker — the "show it" feed. Stacked cards on phones. */
+.mirror-ticker {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mirror-tick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--danger);
+  border-radius: 10px;
+  animation: mirror-slide-in 0.4s ease-out;
+}
+.tick-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6);
+  animation: mirror-pulse 1.4s ease-out infinite;
+  flex-shrink: 0;
+}
+.tick-addr {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.tick-amt {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success);
+}
+.tick-block {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+.mirror-note {
+  margin: 10px 0 0;
+  text-align: center;
+}
+
+@keyframes mirror-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.55); }
+  70% { box-shadow: 0 0 0 8px rgba(249, 115, 22, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
+}
+@keyframes mirror-slide-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .mirror-canvas-wrap {
+    max-width: 260px;
+  }
+  .mirror-lastseen {
+    margin-left: 0;
+    width: 100%;
+    order: 3;
+  }
+  .tick-block {
+    margin-left: 0;
+    width: 100%;
+  }
+  .tick-addr {
+    flex: 1 1 auto;
   }
 }
