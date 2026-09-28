@@ -48,6 +48,9 @@ export const getUserClusters = async (address) => {
 }
 
 export const createCluster = async (address, cluster) => {
+  // FK: clusters.user_wallet -> public.users.wallet_address. The user row
+  // must exist first, or the insert fails with clusters_user_wallet_fkey.
+  await getOrCreateUser(address)
   const { data, error } = await supabase
     .from('clusters')
     .insert([{
@@ -89,6 +92,8 @@ export const deleteCluster = async (clusterId) => {
 
 // Monitor operations
 export const startMonitor = async (clusterId, address, webhookUrl) => {
+  // FK: monitors.user_wallet -> public.users.wallet_address.
+  await getOrCreateUser(address)
   const { data, error } = await supabase
     .from('monitors')
     .insert([{
