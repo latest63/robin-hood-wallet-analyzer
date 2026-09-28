@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { supabase, startMonitor } from '../lib/supabase';
-import { Loader2, ArrowLeft, Bell, ExternalLink, Copy, Check, Wallet, TrendingUp, Clock } from 'lucide-react';
+import ClusterRadar from '../components/ClusterRadar';
+import { Loader2, ArrowLeft, Bell, ExternalLink, Copy, Check, Wallet, TrendingUp, Clock, Radar } from 'lucide-react';
 
 export default function ClusterDetail() {
   const { id } = useParams();
@@ -13,6 +14,15 @@ export default function ClusterDetail() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [monitoring, setMonitoring] = useState(false);
   const [copied, setCopied] = useState(null);
+  // Responsive hero radar: 180px on phones-and-up, 140px on very narrow screens.
+  const [radarSize, setRadarSize] = useState(180);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 480px)');
+    const sync = () => setRadarSize(mq.matches ? 140 : 180);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     if (address && id) {
@@ -121,6 +131,20 @@ export default function ClusterDetail() {
           <ExternalLink size={14} />
           Explorer
         </a>
+      </div>
+
+      {/* Cluster radar — focal visualization */}
+      <div className="card">
+        <div className="section-header">
+          <h2 style={{ fontSize: 18, fontWeight: 600 }}>
+            <Radar size={18} style={{ color: 'var(--primary)' }} />
+            Cluster Radar
+          </h2>
+          <span className="text-sm text-muted">blip = wallet · distance &amp; size = profit · solid = positive PnL, hollow = negative</span>
+        </div>
+        <div className="cluster-radar-slot" style={{ margin: '24px auto' }}>
+          <ClusterRadar wallets={wallets} size={radarSize} />
+        </div>
       </div>
 
       {/* Stats */}

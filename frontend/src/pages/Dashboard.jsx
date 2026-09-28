@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { getUserClusters, getUserMonitors, deleteCluster, stopMonitor } from '../lib/supabase';
-import ClusterRadar from '../components/ClusterRadar';
 import { Loader2, Plus, Trash2, Bell, BellOff, ExternalLink, TrendingUp, Users, Activity, Eye } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -141,9 +140,6 @@ export default function Dashboard() {
                         {cluster.token_address?.slice(0, 8)}...{cluster.token_address?.slice(-6)}
                       </span>
                     </div>
-                  </div>
-                  <div className="cluster-radar-slot">
-                    <ClusterRadar wallets={cluster.cluster_wallets || []} />
                   </div>
                   <div className="flex gap-2">
                     <Link

@@ -196,7 +196,7 @@ export default function ClusterRadar({ wallets, size = 112 }) {
 
   return (
     <div className="cluster-radar">
-      <div className="radar-canvas-wrap">
+      <div className="radar-canvas-wrap" style={{ width: size, height: size }}>
         <canvas ref={canvasRef} style={{ width: size, height: size }} />
         {hover && (
           <div
