@@ -506,9 +506,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Hard structural guard: no page may ever scroll horizontally.
-   `clip` (not `hidden`) so sticky positioning keeps working. */
-html,
+/* No page may ever scroll horizontally: content must wrap / truncate /
+   stack instead. `clip` (not `hidden`) so sticky navbars keep working.
+   The `hidden` line is the fallback for browsers without `clip` (Safari
+   <15.4); it lives on `html` only so the body never becomes a scroll
+   container (which would break position:sticky in older WebKit). */
+html {
+  overflow-x: hidden;
+  overflow-x: clip;
+}
 body {
   overflow-x: clip;
 }
